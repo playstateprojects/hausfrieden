@@ -64,6 +64,8 @@ export const actions: Actions = {
 				emoji: input.emoji || '🙂',
 				color: PERSON_COLORS[existing.length % PERSON_COLORS.length],
 				role: 'member',
+				// people with their own login are grown-ups; edit under Household if not
+				kind: 'adult',
 				sort: existing.length,
 				createdAt: Date.now()
 			});

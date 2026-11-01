@@ -21,7 +21,8 @@ export const taskInput = z.object({
 	only: memberIds.nullable(),
 	days: z.array(z.number().int().min(0).max(6)).max(7).nullable(),
 	carry: z.boolean(),
-	routine: z.enum(['morning', 'evening']).nullable()
+	once: z.boolean().default(false),
+	routine: z.enum(['morning', 'afternoon', 'evening']).nullable()
 });
 export type TaskInput = z.infer<typeof taskInput>;
 
@@ -32,7 +33,32 @@ export const rewardInput = z.object({
 	cost: z.number().int().min(5).max(100_000)
 });
 
-export const memberInput = z.object({ id: id.optional(), name, emoji, color });
+export const memberInput = z.object({ id: id.optional(), name, emoji, color, kind: z.enum(['adult', 'kid']).default('kid') });
+
+const hhmm = z.string().regex(/^\d\d:\d\d$/);
+const weekdays = z.array(z.number().int().min(0).max(6)).max(7);
+export const alarmInput = z.object({
+	id,
+	emoji,
+	label: z.string().trim().min(1).max(60),
+	note: z.string().trim().max(120),
+	time: hhmm,
+	days: weekdays,
+	who: z.union([z.literal('all'), memberIds]),
+	pts: z.number().int().min(0).max(50),
+	extend: z.boolean(),
+	on: z.boolean()
+});
+export const medInput = z.object({
+	id,
+	created: z.number().int().min(0),
+	who: id,
+	label: z.string().trim().min(1).max(60),
+	note: z.string().trim().max(120),
+	times: z.array(hhmm).min(1).max(12),
+	days: weekdays,
+	on: z.boolean()
+});
 export const roomInput = z.object({ id: id.optional(), key: z.string().max(32).nullable().optional(), name, emoji, color });
 
 /** Every mutation against a family goes through one endpoint as one of these ops. */
@@ -55,8 +81,11 @@ export const op = z.discriminatedUnion('op', [
 		id,
 		memberId: id,
 		name,
-		pts: z.number().int().min(1).max(500),
-		at: z.number().int().optional()
+		pts: z.number().int().min(0).max(500),
+		at: z.number().int().optional(),
+		alarmKey: z.string().max(200).optional(),
+		medKey: z.string().max(200).optional(),
+		slotAt: z.number().int().optional()
 	}),
 	z.object({ op: z.literal('log.delete'), id }),
 	z.object({ op: z.literal('reward.save'), reward: rewardInput }),
@@ -65,11 +94,26 @@ export const op = z.discriminatedUnion('op', [
 	z.object({ op: z.literal('redemption.delete'), id }),
 	z.object({ op: z.literal('members.save'), members: z.array(memberInput).min(1).max(30) }),
 	z.object({ op: z.literal('rooms.save'), rooms: z.array(roomInput).max(50) }),
+	z.object({ op: z.literal('member.profile'), id, name, emoji, color }),
+	z.object({ op: z.literal('routine.reorder'), ids: z.array(id).min(1).max(100) }),
 	z.object({
-		op: z.literal('goal.save'),
+		op: z.literal('goals.save'),
 		goal: z.number().int().min(0).max(100_000),
-		goalReward: z.string().trim().max(120)
+		goalReward: z.string().trim().max(120),
+		monthGoal: z.number().int().min(0).max(1_000_000),
+		monthGoalReward: z.string().trim().max(120),
+		monthPrize: z.string().trim().max(120),
+		adultRate: z.number().min(0.1).max(1),
+		budget: z.enum(['free', 'low', 'mid', 'splurge'])
 	}),
+	z.object({
+		op: z.literal('alarms.save'),
+		alarms: z.array(alarmInput).max(30),
+		extendCost: z.number().int().min(0).max(1000),
+		extendMax: z.number().int().min(1).max(10)
+	}),
+	z.object({ op: z.literal('meds.save'), meds: z.array(medInput).max(40) }),
+	z.object({ op: z.literal('alarm.extend'), id, memberId: id, alarmId: id }),
 	z.object({ op: z.literal('family.rename'), name }),
 	z.object({ op: z.literal('invite.rotate') })
 ]);
@@ -77,7 +121,7 @@ export type Op = z.infer<typeof op>;
 
 export const createFamily = z.object({
 	name,
-	members: z.array(z.object({ name, emoji })).min(1).max(30),
+	members: z.array(z.object({ name, emoji, kind: z.enum(['adult', 'kid']).default('kid') })).min(1).max(30),
 	/** Index in `members` of the person creating the family. */
 	meIndex: z.number().int().min(0),
 	starter: z.boolean(),

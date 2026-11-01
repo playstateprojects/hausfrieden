@@ -26,7 +26,9 @@
 	let routine = $state<RoutineKey | ''>(old?.routine ?? '');
 	const dkey = (d: number[]) => 'd:' + [...d].sort().join(',');
 	let freq = $state(
-		old && hasDays(old)
+		old?.once
+			? 'o:1'
+			: old && hasDays(old)
 			? DAYPRESETS.some((p) => p[0] === dkey(old.days))
 				? dkey(old.days)
 				: 'd:custom'
@@ -36,6 +38,7 @@
 	if (old && !hasDays(old) && !ints.some((f) => f[0] === old.every)) ints.push([old.every, `Every ${old.every} days`]);
 
 	const byDay = $derived(freq.startsWith('d:'));
+	const once = $derived(freq === 'o:1');
 	const names = $derived(h.names(sel));
 	const hint = $derived(
 		mode === 'anyone'
@@ -84,9 +87,10 @@
 			roomId: room,
 			mins,
 			pts: pts || null,
-			every: byDay ? 7 : Number(freq.slice(2)) || 7,
+			every: byDay || once ? 7 : Number(freq.slice(2)) || 7,
 			days: byDay ? [...days].sort() : null,
 			carry: byDay ? carry : false,
+			once,
 			each: mode === 'each',
 			who: mode === 'people' && sel.length === 1 ? sel[0] : null,
 			team: mode === 'people' && sel.length > 1 ? [...sel] : null,
@@ -129,6 +133,7 @@
 			<optgroup label="Repeat after">
 				{#each ints as [d, l] (d)}<option value={'i:' + d}>{l}</option>{/each}
 			</optgroup>
+			<option value="o:1">Once only (e.g. paint a wall, bake a cake)</option>
 			<optgroup label="On set days">
 				{#each DAYPRESETS as [v, l] (v)}<option value={v}>{l}</option>{/each}
 			</optgroup>

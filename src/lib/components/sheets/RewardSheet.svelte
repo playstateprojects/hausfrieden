@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getApp } from '#lib/client/app.svelte.ts';
 	import { rewardInput } from '#lib/schemas.ts';
+	import IdeaChips from '../IdeaChips.svelte';
 	import Sheet from './Sheet.svelte';
 
 	let { id }: { id: string | null } = $props();
@@ -40,6 +41,18 @@
 		<input bind:value={emoji} maxlength="4" aria-label="Emoji" />
 		<input bind:value={name} placeholder="e.g. Choose Saturday breakfast" />
 	</div>
+	{#if !id}
+		<p class="sub" style="margin:10px 0 0">Ideas that suit your budget:</p>
+		<IdeaChips
+			kind="treats"
+			budget={app.s.family.budget}
+			pick={(i) => {
+				name = i.label;
+				emoji = i.emoji;
+				if (i.cost) cost = i.cost;
+			}}
+		/>
+	{/if}
 	<label class="field mt"><span>Cost in points</span><input type="number" inputmode="numeric" min="5" step="5" bind:value={cost} /></label>
 	<p class="sub">A typical day of helping earns 20–60 points.</p>
 	{#if err}<p class="err">{err}</p>{/if}

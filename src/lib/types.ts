@@ -7,7 +7,37 @@ export interface Member {
 	emoji: string;
 	color: string;
 	role: 'admin' | 'member';
+	kind: 'adult' | 'kid';
 	sort: number;
+}
+
+export interface Alarm {
+	id: string;
+	emoji: string;
+	label: string;
+	note: string;
+	/** HH:MM */
+	time: string;
+	/** Weekdays (0 = Sunday); empty means every day. */
+	days: number[];
+	/** Member ids, or 'all' to ring on every device. */
+	who: string[] | 'all';
+	pts: number;
+	/** Can be pushed back 10 minutes for points. */
+	extend: boolean;
+	on: boolean;
+}
+
+export interface Med {
+	id: string;
+	/** Start of the day it was created; earlier days don't show it. */
+	created: number;
+	who: string;
+	label: string;
+	note: string;
+	times: string[];
+	days: number[];
+	on: boolean;
 }
 
 export interface Room {
@@ -32,6 +62,7 @@ export interface Task {
 	only: string[] | null;
 	days: number[] | null;
 	carry: boolean;
+	once: boolean;
 	routine: RoutineKey | null;
 	sortOrder: number;
 	last: number;
@@ -47,6 +78,9 @@ export interface LogEntry {
 	memberId: string;
 	at: number;
 	pts: number;
+	alarmKey: string | null;
+	medKey: string | null;
+	slotAt: number | null;
 }
 
 export interface Reward {
@@ -63,6 +97,8 @@ export interface Redemption {
 	emoji: string;
 	cost: number;
 	at: number;
+	ext: boolean;
+	alarmId: string | null;
 }
 
 export interface FamilyInfo {
@@ -71,6 +107,17 @@ export interface FamilyInfo {
 	inviteCode: string;
 	goal: number;
 	goalReward: string;
+	monthGoal: number;
+	monthGoalReward: string;
+	monthPrize: string;
+	adultRate: number;
+	adultCap: number;
+	budget: 'free' | 'low' | 'mid' | 'splurge';
+	champStart: number;
+	extendCost: number;
+	extendMax: number;
+	alarms: Alarm[];
+	meds: Med[];
 }
 
 export interface FamilyState {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getApp } from '#lib/client/app.svelte.ts';
+	import { ROUTINES, type RoutineKey } from '#lib/constants.ts';
 	import TaskRow from '../TaskRow.svelte';
 
 	const app = getApp();
@@ -10,7 +11,7 @@
 	);
 	const cards = $derived(
 		app.s.rooms.map((r) => {
-			const ts = app.s.tasks.filter((t) => t.roomId === r.id);
+			const ts = app.s.tasks.filter((t) => t.roomId === r.id && !(t.once && h.lastFor(t)));
 			const fresh = ts.length
 				? Math.round((ts.reduce((s, t) => s + Math.max(0, Math.min(1, 1 - h.ratio(t))), 0) / ts.length) * 100)
 				: 100;
@@ -25,6 +26,13 @@
 	<button class="back" onclick={() => (app.room = null)}>‹ All rooms</button>
 	<h2 class="hello">{current.emoji} {current.name}</h2>
 	<p class="sub">{roomTasks.length} tasks · tap a task to edit it</p>
+	{#if current.key === 'routines'}
+		<div class="chips" style="margin-bottom:12px">
+			{#each Object.entries(ROUTINES) as [k, R] (k)}
+				<button class="chip" onclick={() => (app.sheet = { kind: 'reorder', key: k as RoutineKey })}>↕ {R.emoji} {R.label.replace(' routine', '')} order</button>
+			{/each}
+		</div>
+	{/if}
 	{#each roomTasks as t (t.id)}<TaskRow {t} noRoom />{:else}<div class="empty">No tasks here yet.</div>{/each}
 	<button class="btn ghost block mt" onclick={() => (app.sheet = { kind: 'task', id: null, roomId: app.room })}>+ Add a task to {current.name}</button>
 {:else}

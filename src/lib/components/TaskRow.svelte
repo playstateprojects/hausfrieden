@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getApp } from '#lib/client/app.svelte.ts';
-	import { ptsFor } from '#lib/logic.ts';
 	import type { Task } from '#lib/types.ts';
 
 	let { t, noRoom = false }: { t: Task; noRoom?: boolean } = $props();
@@ -20,7 +19,7 @@
 		<div class="t-name">{t.name}</div>
 		<div class="t-meta">
 			{#if !noRoom}<span>{r.emoji} {r.name}</span>·{/if}
-			<span>{t.mins}m</span>·<span>{h.whoLabel(t)}</span>·<span class="pts">+{ptsFor(t)}</span>
+			<span>{t.mins}m</span>·<span>{h.whoLabel(t)}</span>·<span class="pts">+{h.myPts(t)}</span>
 		</div>
 	</button>
 	{#if done}

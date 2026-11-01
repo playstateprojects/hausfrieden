@@ -21,6 +21,12 @@ async function assertRoom(db: DB, familyId: string, roomId: string) {
 	if (!r) error(400, 'Unknown room');
 }
 
+/** Grown-ups earn a fraction of task points (capped), so the kids can win the monthly race. */
+function awardPts(raw: number, kind: 'adult' | 'kid' | undefined, fam: { adultRate: number; adultCap: number } | undefined) {
+	if (kind !== 'adult' || !fam || fam.adultRate >= 1) return raw;
+	return Math.max(1, Math.min(fam.adultCap, Math.round(raw * fam.adultRate)));
+}
+
 /** Applies one validated op to a family. Returns a small JSON-able result. */
 export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<string, unknown>> {
 	const fid = actor.familyId;
@@ -42,8 +48,9 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 				team: t.each ? null : t.team?.length ? t.team : null,
 				each: t.each,
 				only: t.each && t.only?.length ? t.only : null,
-				days: t.days?.length ? [...t.days].sort() : null,
-				carry: t.days?.length ? t.carry : false,
+				carry: t.days?.length && !t.once ? t.carry : false,
+				once: t.once,
+				days: !t.once && t.days?.length ? [...t.days].sort() : null,
 				routine: t.routine
 			};
 			const old = t.id ? await getTask(db, fid, t.id) : null;
@@ -71,8 +78,12 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 		case 'task.complete': {
 			const t = await getTask(db, fid, o.id);
 			await assertMembers(db, fid, [o.memberId]);
-			const now = Date.now(),
-				pts = ptsFor(t);
+			const now = Date.now();
+			const [me, fam] = await Promise.all([
+				db.query.members.findFirst({ where: inFamily(members, o.memberId) }),
+				db.query.families.findFirst({ where: eq(families.id, fid) })
+			]);
+			const pts = awardPts(ptsFor(t), me?.kind, fam);
 			const update = t.each
 				? db
 						.update(tasks)
@@ -101,7 +112,18 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 
 		case 'log.add':
 			await assertMembers(db, fid, [o.memberId]);
-			await db.insert(logEntries).values({ id: o.id, familyId: fid, taskId: null, name: o.name, memberId: o.memberId, at: o.at ?? Date.now(), pts: o.pts });
+			await db.insert(logEntries).values({
+				id: o.id,
+				familyId: fid,
+				taskId: null,
+				name: o.name,
+				memberId: o.memberId,
+				at: o.at ?? Date.now(),
+				pts: o.pts,
+				alarmKey: o.alarmKey ?? null,
+				medKey: o.medKey ?? null,
+				slotAt: o.slotAt ?? null
+			});
 			return {};
 
 		case 'log.delete':
@@ -148,8 +170,8 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 			const now = Date.now();
 			const stmts = o.members.map((m, i) =>
 				m.id
-					? db.update(members).set({ name: m.name, emoji: m.emoji, color: m.color, sort: i }).where(inFamily(members, m.id))
-					: db.insert(members).values({ id: newId(), familyId: fid, userId: null, name: m.name, emoji: m.emoji, color: m.color || PERSON_COLORS[i % PERSON_COLORS.length], role: 'member', sort: i, createdAt: now })
+					? db.update(members).set({ name: m.name, emoji: m.emoji, color: m.color, kind: m.kind, sort: i }).where(inFamily(members, m.id))
+					: db.insert(members).values({ id: newId(), familyId: fid, userId: null, name: m.name, emoji: m.emoji, color: m.color || PERSON_COLORS[i % PERSON_COLORS.length], role: 'member', kind: m.kind, sort: i, createdAt: now })
 			);
 			if (removed.length) stmts.push(db.delete(members).where(and(eq(members.familyId, fid), inArray(members.id, removed.map((m) => m.id)))) as never);
 			await db.batch(stmts as [(typeof stmts)[0], ...typeof stmts]);
@@ -180,9 +202,51 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 			return {};
 		}
 
-		case 'goal.save':
-			await db.update(families).set({ goal: o.goal, goalReward: o.goalReward }).where(eq(families.id, fid));
+		case 'member.profile':
+			await db.update(members).set({ name: o.name, emoji: o.emoji, color: o.color }).where(inFamily(members, o.id));
 			return {};
+
+		case 'routine.reorder': {
+			const found = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.familyId, fid), inArray(tasks.id, o.ids)));
+			if (found.length !== o.ids.length) error(400, 'Unknown task');
+			await db.batch(o.ids.map((tid, i) => db.update(tasks).set({ sortOrder: i + 1 }).where(inFamily(tasks, tid))) as never);
+			return {};
+		}
+
+		case 'goals.save': {
+			const { op: _op, ...fields } = o;
+			await db.update(families).set(fields).where(eq(families.id, fid));
+			return {};
+		}
+
+		case 'alarms.save':
+			await assertMembers(db, fid, o.alarms.flatMap((a) => (a.who === 'all' ? [] : a.who)));
+			await db.update(families).set({ alarms: o.alarms, extendCost: o.extendCost, extendMax: o.extendMax }).where(eq(families.id, fid));
+			return {};
+
+		case 'meds.save':
+			await assertMembers(db, fid, o.meds.map((m) => m.who));
+			await db.update(families).set({ meds: o.meds }).where(eq(families.id, fid));
+			return {};
+
+		case 'alarm.extend': {
+			const fam = await db.query.families.findFirst({ where: eq(families.id, fid) });
+			if (!fam) error(404, 'Family not found');
+			await assertMembers(db, fid, [o.memberId]);
+			if (((await balancesFor(db, fid))[o.memberId] || 0) < fam.extendCost) error(400, 'Not enough points');
+			await db.insert(redemptions).values({
+				id: o.id,
+				familyId: fid,
+				memberId: o.memberId,
+				name: '10 more minutes',
+				emoji: '⏰',
+				cost: fam.extendCost,
+				at: Date.now(),
+				ext: true,
+				alarmId: o.alarmId
+			});
+			return {};
+		}
 
 		case 'family.rename':
 			await db.update(families).set({ name: o.name }).where(eq(families.id, fid));

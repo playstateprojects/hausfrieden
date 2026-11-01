@@ -11,10 +11,10 @@
 	const first = data.userName?.trim() || 'Me';
 	let familyName = $state(`${first}’s home`);
 	let people = $state([
-		{ emoji: '🌻', name: first },
-		{ emoji: '🎨', name: '' },
-		{ emoji: '📷', name: '' },
-		{ emoji: '🦄', name: '' }
+		{ emoji: '🌻', name: first, kind: 'adult' as 'adult' | 'kid' },
+		{ emoji: '🎨', name: '', kind: 'adult' as 'adult' | 'kid' },
+		{ emoji: '📷', name: '', kind: 'kid' as 'adult' | 'kid' },
+		{ emoji: '🦄', name: '', kind: 'kid' as 'adult' | 'kid' }
 	]);
 	let starter = $state(true);
 	let busy = $state(false);
@@ -23,7 +23,7 @@
 
 	async function create() {
 		err = '';
-		const list = people.map((p) => ({ name: p.name.trim(), emoji: p.emoji.trim() || '🙂' })).filter((p) => p.name);
+		const list = people.map((p) => ({ name: p.name.trim(), emoji: p.emoji.trim() || '🙂', kind: p.kind })).filter((p) => p.name);
 		const parsed = createFamily.safeParse({
 			name: familyName,
 			members: list,
@@ -70,7 +70,7 @@
 
 	<div class="card" style="padding:22px">
 		<h2 class="hello">Let’s set up your home</h2>
-		<p class="sub">Who lives here? Everyone gets their own list, points and treats. The first person is you.</p>
+		<p class="sub">Who lives here? Everyone gets their own list, points and treats. The first person is you. Tap Grown-up/Kid to switch.</p>
 
 		<label class="field"><span>Home name</span><input bind:value={familyName} /></label>
 
@@ -78,6 +78,9 @@
 			<div class="person-edit">
 				<input bind:value={p.emoji} maxlength="4" aria-label="Emoji" />
 				<input bind:value={p.name} placeholder={i === 0 ? 'Your name' : 'Name'} />
+				<button class="x" style="width:64px;font-size:12.5px;font-weight:800;color:var(--ink)" onclick={() => (p.kind = p.kind === 'adult' ? 'kid' : 'adult')}>
+					{p.kind === 'adult' ? 'Grown-up' : 'Kid'}
+				</button>
 				{#if i > 0}
 					<button class="x" onclick={() => people.splice(i, 1)} aria-label="Remove">×</button>
 				{:else}
@@ -85,7 +88,7 @@
 				{/if}
 			</div>
 		{/each}
-		<button class="btn ghost block" onclick={() => people.push({ emoji: '🙂', name: '' })}>+ Add person</button>
+		<button class="btn ghost block" onclick={() => people.push({ emoji: '🙂', name: '', kind: 'kid' })}>+ Add person</button>
 
 		<label class="toggle mt">
 			<input type="checkbox" bind:checked={starter} />

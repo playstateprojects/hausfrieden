@@ -14,7 +14,7 @@
 		const rid = uid(),
 			memberId = app.me;
 		app.sheet = null;
-		app.s.redemptions.unshift({ id: rid, memberId, name: r.name, emoji: r.emoji, cost: r.cost, at: Date.now() });
+		app.s.redemptions.unshift({ id: rid, memberId, name: r.name, emoji: r.emoji, cost: r.cost, at: Date.now(), ext: false, alarmId: null });
 		app.s.balances[memberId] = (app.s.balances[memberId] || 0) - r.cost;
 		burst(160);
 		app.showToast(`Enjoy your ${r.name.toLowerCase()}! 🎉`);

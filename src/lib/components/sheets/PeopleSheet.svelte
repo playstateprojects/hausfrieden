@@ -5,14 +5,14 @@
 
 	const app = getApp();
 	let list = $state(
-		app.s.members.map((p) => ({ id: p.id as string | undefined, name: p.name, emoji: p.emoji, color: p.color, linked: !!p.userId }))
+		app.s.members.map((p) => ({ id: p.id as string | undefined, name: p.name, emoji: p.emoji, color: p.color, kind: p.kind, linked: !!p.userId }))
 	);
-	const add = () => list.push({ id: undefined, name: '', emoji: '🙂', color: PERSON_COLORS[list.length % PERSON_COLORS.length], linked: false });
+	const add = () => list.push({ id: undefined, name: '', emoji: '🙂', color: PERSON_COLORS[list.length % PERSON_COLORS.length], kind: 'kid' as 'adult' | 'kid', linked: false });
 
 	async function save() {
 		const members = list
 			.filter((p) => p.name.trim())
-			.map((p) => ({ id: p.id, name: p.name.trim(), emoji: p.emoji.trim() || '🙂', color: p.color }));
+			.map((p) => ({ id: p.id, name: p.name.trim(), emoji: p.emoji.trim() || '🙂', color: p.color, kind: p.kind }));
 		if (!members.length) return;
 		app.sheet = null;
 		await app.send({ op: 'members.save', members });
@@ -25,6 +25,9 @@
 		<div class="person-edit">
 			<input bind:value={p.emoji} maxlength="4" aria-label="Emoji" />
 			<input bind:value={p.name} placeholder="Name" />
+			<button class="x" style="width:64px;font-size:12.5px;font-weight:800;color:var(--ink)" onclick={() => (p.kind = p.kind === 'adult' ? 'kid' : 'adult')}>
+				{p.kind === 'adult' ? 'Grown-up' : 'Kid'}
+			</button>
 			{#if p.linked}
 				<span class="x" style="display:grid;place-items:center;font-size:15px" title="Has their own login">🔑</span>
 			{:else if list.length > 1}

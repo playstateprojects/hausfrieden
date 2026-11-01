@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import type { Alarm, Med } from '../../types.ts';
 
 /* ------------------------------------------------------------------ */
 /* better-auth core tables (field names must match better-auth's model) */
@@ -82,6 +83,23 @@ export const families = sqliteTable('families', {
 	inviteCode: text('invite_code').notNull().unique(),
 	goal: integer('goal').notNull().default(0),
 	goalReward: text('goal_reward').notNull().default(''),
+	monthGoal: integer('month_goal').notNull().default(0),
+	monthGoalReward: text('month_goal_reward').notNull().default(''),
+	/** What the monthly points champion wins. */
+	monthPrize: text('month_prize').notNull().default(''),
+	/** Fraction of task points grown-ups earn (1 = full). */
+	adultRate: real('adult_rate').notNull().default(0.5),
+	adultCap: integer('adult_cap').notNull().default(15),
+	/** Only changes which treat/prize ideas are suggested. */
+	budget: text('budget', { enum: ['free', 'low', 'mid', 'splurge'] })
+		.notNull()
+		.default('low'),
+	/** The monthly race starts counting from this timestamp. */
+	champStart: integer('champ_start').notNull().default(0),
+	extendCost: integer('extend_cost').notNull().default(20),
+	extendMax: integer('extend_max').notNull().default(2),
+	alarms: text('alarms', { mode: 'json' }).$type<Alarm[]>().notNull().default(sql`'[]'`),
+	meds: text('meds', { mode: 'json' }).$type<Med[]>().notNull().default(sql`'[]'`),
 	createdAt: integer('created_at').notNull()
 });
 
@@ -103,6 +121,10 @@ export const members = sqliteTable(
 		role: text('role', { enum: ['admin', 'member'] })
 			.notNull()
 			.default('member'),
+		/** Grown-ups earn scaled points (fair play) and see kids' alarms and medicines. */
+		kind: text('kind', { enum: ['adult', 'kid'] })
+			.notNull()
+			.default('kid'),
 		sort: integer('sort').notNull().default(0),
 		createdAt: integer('created_at').notNull()
 	},
@@ -155,7 +177,9 @@ export const tasks = sqliteTable(
 		days: text('days', { mode: 'json' }).$type<number[] | null>(),
 		/** Day-scheduled task stays due until done. */
 		carry: integer('carry', { mode: 'boolean' }).notNull().default(false),
-		routine: text('routine', { enum: ['morning', 'evening'] }),
+		/** One-off project: due until done once. */
+		once: integer('once', { mode: 'boolean' }).notNull().default(false),
+		routine: text('routine', { enum: ['morning', 'afternoon', 'evening'] }),
 		sortOrder: integer('sort_order').notNull().default(0),
 		last: integer('last').notNull().default(0),
 		lastBy: text('last_by'),
@@ -181,7 +205,12 @@ export const logEntries = sqliteTable(
 		name: text('name').notNull(),
 		memberId: text('member_id').notNull(),
 		at: integer('at').notNull(),
-		pts: integer('pts').notNull()
+		pts: integer('pts').notNull(),
+		/** Set when the entry records an acknowledged alarm. */
+		alarmKey: text('alarm_key'),
+		/** Set when the entry records a medicine dose; `slotAt` is when it was due. */
+		medKey: text('med_key'),
+		slotAt: integer('slot_at')
 	},
 	(t) => [index('log_family_at_idx').on(t.familyId, t.at)]
 );
@@ -213,7 +242,10 @@ export const redemptions = sqliteTable(
 		name: text('name').notNull(),
 		emoji: text('emoji').notNull(),
 		cost: integer('cost').notNull(),
-		at: integer('at').notNull()
+		at: integer('at').notNull(),
+		/** "10 more minutes" bought on an alarm. */
+		ext: integer('ext', { mode: 'boolean' }).notNull().default(false),
+		alarmId: text('alarm_id')
 	},
 	(t) => [index('redemptions_family_at_idx').on(t.familyId, t.at)]
 );

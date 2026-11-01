@@ -134,3 +134,7 @@ details summary::-webkit-details-marker{display:none}
 .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:.12em;font-size:20px;background:#F1EADF;border-radius:12px;padding:10px 14px;text-align:center}
 .list-btn{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border-radius:14px;background:#fff;border:1.5px solid var(--line);margin-bottom:8px;text-align:left;font-weight:700}
 .list-btn.on{border-color:var(--accent);background:var(--accent-soft)}
+.alarm{position:fixed;inset:0;z-index:65;background:linear-gradient(160deg,#2E2B4A,#1B1930);color:#fff;display:none;align-items:center;justify-content:center;padding:24px;text-align:center}
+.alarm.show{display:flex}
+.alarm-box{max-width:420px;width:100%}
+.alarm h2{color:#fff}

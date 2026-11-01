@@ -1,7 +1,7 @@
 // Scheduling, points and assignment logic — ported 1:1 from the original artifact.
 // Pure functions over a FamilyState snapshot, a "me" member id and a clock.
-import { DAY, ROUTINES, WD, type RoutineKey } from './constants.ts';
-import type { FamilyState, Member, Room, Task } from './types.ts';
+import { DAY, MILESTONES, MONTHS, ROUTINES, WD, type RoutineKey } from './constants.ts';
+import type { Alarm, FamilyState, LogEntry, Med, Member, Room, Task } from './types.ts';
 
 export type Status = ['due' | 'soon' | 'ok', string];
 export type Scope = 'me' | 'all';
@@ -14,7 +14,7 @@ export const sod = (ms: number) => {
 export const daysBetween = (a: number, b: number) => Math.round((sod(b) - sod(a)) / DAY);
 export const hasDays = (t: Task): t is Task & { days: number[] } => Array.isArray(t.days) && t.days.length > 0;
 export const ptsFor = (t: Pick<Task, 'pts' | 'mins'>) => (t.pts && t.pts > 0 ? t.pts : 5 + (t.mins || 0));
-const dayKey = (ms: number) => {
+export const dayKey = (ms: number) => {
 	const d = new Date(ms);
 	return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
 };
@@ -84,6 +84,7 @@ export class House {
 	ratio = (t: Task, pid?: string): number => {
 		const l = this.lastFor(t, pid),
 			now = this.now;
+		if (t.once) return l ? -1 : 9;
 		if (hasDays(t)) {
 			const lo = this.lastOcc(t);
 			if (l < lo && (lo === this.startOfDay || t.carry)) return 1 + daysBetween(lo, now) / 7 + (t.carry ? 0 : 0.01);
@@ -100,6 +101,7 @@ export class House {
 	status = (t: Task): Status => {
 		const r = this.ratio(t),
 			l = this.lastFor(t);
+		if (t.once) return l ? ['ok', 'done ✓'] : ['due', 'one-off'];
 		if (hasDays(t)) {
 			if (r >= 1) {
 				const lo = this.lastOcc(t);
@@ -186,5 +188,131 @@ export class House {
 	};
 	familyWeekPts = () => this.s.members.reduce((a, p) => a + this.weekPts(p.id), 0);
 
+
+	/* ---------- fair play, months and the race ---------- */
+
+	isAdult = (pid: string) => this.person(pid)?.kind === 'adult';
+	/** Grown-ups earn a fraction of task points (capped) so kids can win the monthly race. */
+	award = (raw: number, pid: string) => {
+		if (!this.isAdult(pid)) return raw;
+		const { adultRate: rate, adultCap: cap } = this.s.family;
+		if (rate >= 1) return raw;
+		return Math.max(1, Math.min(cap, Math.round(raw * rate)));
+	};
+	myPts = (t: Pick<Task, 'pts' | 'mins'>) => this.award(ptsFor(t), this.me);
+
+	monthStart = (off = 0) => {
+		const d = new Date(this.now);
+		d.setHours(0, 0, 0, 0);
+		d.setDate(1);
+		d.setMonth(d.getMonth() + off);
+		return d.getTime();
+	};
+	daysLeftInMonth = () => Math.round((this.monthStart(1) - this.startOfDay) / DAY);
+	ptsBetween = (pid: string, a: number, b: number) =>
+		this.s.log.filter((l) => l.memberId === pid && l.at >= a && l.at < b).reduce((s, l) => s + (l.pts || 0), 0);
+	monthPts = (pid: string) => this.ptsBetween(pid, this.monthStart(0), Infinity);
+	familyMonthPts = () => this.s.members.reduce((a, p) => a + this.monthPts(p.id), 0);
+
+	/** Winner(s) of the previous month, only for months after the race began. */
+	lastChampion = () => {
+		const a = this.monthStart(-1),
+			b = this.monthStart(0);
+		if (a < this.s.family.champStart) return null;
+		const rows = this.s.members
+			.map((p) => ({ p, n: this.ptsBetween(p.id, a, b) }))
+			.filter((r) => r.n > 0)
+			.sort((x, y) => y.n - x.n);
+		if (!rows.length) return null;
+		return { month: MONTHS[new Date(a).getMonth()], winners: rows.filter((r) => r.n === rows[0].n), n: rows[0].n };
+	};
+
+	nextMilestone = (n: number) => Object.keys(MILESTONES).map(Number).find((m) => m > n);
+	didToday = (pid: string) => this.s.log.some((l) => l.memberId === pid && l.at >= this.startOfDay);
+
+	/* ---------- alarms ---------- */
+
+	/** Members whose reminders this device shows: yourself, plus every kid if you're a grown-up. */
+	alarmPeople = () =>
+		!this.me ? [] : this.s.members.filter((p) => p.id === this.me || (this.isAdult(this.me) && !this.isAdult(p.id))).map((p) => p.id);
+	private visibleHere = (t: string) => !!this.me && (t === 'all' || t === this.me || (this.isAdult(this.me) && !this.isAdult(t)));
+	extToday = (pid: string, alarmId: string) =>
+		this.s.redemptions.filter((x) => x.memberId === pid && x.ext && x.alarmId === alarmId && x.at >= this.startOfDay).length;
+
+	alarmSlots = (): AlarmSlot[] => {
+		const wd = new Date(this.now).getDay(),
+			dk = dayKey(this.now),
+			out: AlarmSlot[] = [];
+		const logByAlarm = new Map<string, LogEntry>();
+		for (const l of this.s.log) if (l.alarmKey) logByAlarm.set(l.alarmKey, l);
+		for (const a of this.s.family.alarms) {
+			if (!a.on || !/^\d\d:\d\d$/.test(a.time || '')) continue;
+			if (a.days.length && !a.days.includes(wd)) continue;
+			const [hh, mm] = a.time.split(':').map(Number),
+				d = new Date(this.now);
+			d.setHours(hh, mm, 0, 0);
+			const targets = a.who === 'all' || !a.who.length ? ['all'] : a.who;
+			for (const t of targets) {
+				if (!this.visibleHere(t)) continue;
+				const ext = a.extend && t !== 'all' ? this.extToday(t, a.id) : 0,
+					key = a.id + '_' + t + '_' + dk;
+				out.push({ a, t, base: d.getTime(), at: d.getTime() + ext * 6e5, ext, key, ack: logByAlarm.get(key) });
+			}
+		}
+		return out.sort((x, y) => x.at - y.at);
+	};
+
+	/* ---------- medicines ---------- */
+
+	medSlotsOn = (pid: string, day: number): MedSlot[] => {
+		const wd = new Date(day).getDay(),
+			dk = dayKey(day),
+			out: MedSlot[] = [];
+		for (const m of this.s.family.meds) {
+			if (!m.on || m.who !== pid) continue;
+			if (m.created && day < sod(m.created)) continue;
+			if (m.days.length && !m.days.includes(wd)) continue;
+			for (const t of m.times) {
+				if (!/^\d\d:\d\d$/.test(t)) continue;
+				const [hh, mi] = t.split(':').map(Number),
+					d = new Date(day);
+				d.setHours(hh, mi, 0, 0);
+				const key = m.id + '_' + t.replace(':', '') + '_' + dk;
+				out.push({ m, pid, time: t, at: d.getTime(), key, took: this.s.log.find((l) => l.medKey === key) });
+			}
+		}
+		return out.sort((a, b) => a.at - b.at);
+	};
+	medSlotsToday = (pid: string) => this.medSlotsOn(pid, this.startOfDay);
+	dayN = (n: number) => {
+		const d = new Date(this.now);
+		d.setHours(0, 0, 0, 0);
+		d.setDate(d.getDate() - n);
+		return d.getTime();
+	};
+	findMedSlot = (key: string) => {
+		for (let n = 0; n < 31; n++) for (const p of this.s.members) for (const x of this.medSlotsOn(p.id, this.dayN(n))) if (x.key === key) return x;
+		return null;
+	};
+
 	routineBonusName = (key: RoutineKey) => ROUTINES[key].label + ' complete';
+}
+
+export interface AlarmSlot {
+	a: Alarm;
+	/** Member id, or 'all'. */
+	t: string;
+	base: number;
+	at: number;
+	ext: number;
+	key: string;
+	ack: LogEntry | undefined;
+}
+export interface MedSlot {
+	m: Med;
+	pid: string;
+	time: string;
+	at: number;
+	key: string;
+	took: LogEntry | undefined;
 }

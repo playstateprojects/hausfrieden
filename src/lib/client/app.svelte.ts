@@ -1,7 +1,7 @@
 import { invalidate } from '$app/navigation';
 import { getContext, setContext } from 'svelte';
-import { CHEERS, ROUTINE_BONUS, ROUTINES, type RoutineKey } from '#lib/constants.ts';
-import { House, ptsFor, type Scope } from '#lib/logic.ts';
+import { CHEERS, MILESTONES, ROUTINE_BONUS, ROUTINES, WD, type RoutineKey } from '#lib/constants.ts';
+import { House, type MedSlot, type Scope } from '#lib/logic.ts';
 import type { Op } from '#lib/schemas.ts';
 import type { FamilyState } from '#lib/types.ts';
 import { burst, chime, unlockAudio } from './fx.ts';
@@ -15,7 +15,12 @@ export type Sheet =
 	| { kind: 'people' }
 	| { kind: 'rooms' }
 	| { kind: 'goal' }
-	| { kind: 'home' };
+	| { kind: 'home' }
+	| { kind: 'profile'; id: string }
+	| { kind: 'reorder'; key: RoutineKey }
+	| { kind: 'alarms' }
+	| { kind: 'meds' }
+	| { kind: 'medlog' };
 
 type Undo = {
 	taskId: string;
@@ -24,14 +29,14 @@ type Undo = {
 	prev: { each: true; last: number } | { each: false; last: number; lastBy: string | null };
 };
 
-const lsGet = (k: string) => {
+export const lsGet = (k: string) => {
 	try {
 		return localStorage.getItem(k);
 	} catch {
 		return null;
 	}
 };
-const lsSet = (k: string, v: string) => {
+export const lsSet = (k: string, v: string) => {
 	try {
 		localStorage.setItem(k, v);
 	} catch {
@@ -39,6 +44,7 @@ const lsSet = (k: string, v: string) => {
 	}
 };
 export const uid = () => crypto.randomUUID();
+export const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 /** Client state for one family: server data (with optimistic edits) plus UI state. */
 export class AppState {
@@ -157,8 +163,11 @@ export class AppState {
 		if (!t || !me) return;
 		const now = Date.now();
 		this.now = now;
+		const h = this.house;
 		const logId = uid(),
-			pts = ptsFor(t);
+			pts = h.myPts(t);
+		const hadToday = h.didToday(me),
+			newStreak = hadToday ? h.streak(me) : h.streak(me) + 1;
 		this.undoInfo = {
 			taskId: id,
 			logId,
@@ -172,29 +181,43 @@ export class AppState {
 			t.last = now;
 			t.lastBy = me;
 		}
-		this.s.log.unshift({ id: logId, taskId: id, name: t.name, memberId: me, at: now, pts });
+		this.s.log.unshift({ id: logId, taskId: id, name: t.name, memberId: me, at: now, pts, alarmKey: null, medKey: null, slotAt: null });
 		this.s.balances[me] = (this.s.balances[me] || 0) + pts;
 		burst();
 
 		const ops: Op[] = [{ op: 'task.complete', id, memberId: me, logId }];
+		const bonus = (name: string, bpts: number, at: number) => {
+			const bonusId = uid();
+			this.s.log.unshift({ id: bonusId, taskId: null, name, memberId: me, at, pts: bpts, alarmKey: null, medKey: null, slotAt: null });
+			this.s.balances[me] += bpts;
+			ops.push({ op: 'log.add', id: bonusId, memberId: me, name, pts: bpts, at });
+		};
+		const finish = async () => {
+			this.undoInfo = null;
+			await Promise.all(ops.map((o) => this.send(o)));
+		};
+
+		const streakName = `🔥 ${newStreak}-day streak!`;
+		if (!hadToday && MILESTONES[newStreak] && !this.s.log.some((l) => l.memberId === me && l.name === streakName)) {
+			const bpts = h.award(MILESTONES[newStreak], me);
+			bonus(streakName, bpts, now + 2);
+			setTimeout(() => burst(200), 350);
+			this.showToast(`🔥 ${newStreak}-day streak! +${bpts} bonus points`);
+			return finish();
+		}
 
 		if (t.routine && ROUTINES[t.routine]) {
-			const h = this.house,
-				R = ROUTINES[t.routine],
+			const R = ROUTINES[t.routine],
 				bonusName = h.routineBonusName(t.routine);
 			const steps = h.routineSteps(t.routine);
 			const allDone = steps.length > 0 && steps.every((s) => h.doneRecently(s));
 			const already = this.s.log.some((l) => l.memberId === me && l.name === bonusName && l.at >= h.startOfDay);
 			if (allDone && !already) {
-				const bonusId = uid();
-				this.s.log.unshift({ id: bonusId, taskId: null, name: bonusName, memberId: me, at: now + 1, pts: ROUTINE_BONUS });
-				this.s.balances[me] += ROUTINE_BONUS;
-				ops.push({ op: 'log.add', id: bonusId, memberId: me, name: bonusName, pts: ROUTINE_BONUS, at: now + 1 });
+				const bpts = h.award(ROUTINE_BONUS, me);
+				bonus(bonusName, bpts, now + 1);
 				setTimeout(() => burst(160), 350);
-				this.showToast(`${R.emoji} ${R.label} done! +${pts} and +${ROUTINE_BONUS} bonus`);
-				this.undoInfo = null;
-				await Promise.all(ops.map((o) => this.send(o)));
-				return;
+				this.showToast(`${R.emoji} ${R.label} done! +${pts} and +${bpts} bonus`);
+				return finish();
 			}
 		}
 		this.showToast(`+${pts} pts · ${CHEERS[Math.floor(Math.random() * CHEERS.length)]}`, 'Undo', () => this.undo());
@@ -218,6 +241,58 @@ export class AppState {
 		if (entry) this.s.balances[u.memberId] -= entry.pts;
 		this.s.log = this.s.log.filter((l) => l.id !== u.logId);
 		await this.send({ op: 'task.undo', id: u.taskId, memberId: u.memberId, logId: u.logId, prev: u.prev });
+	}
+
+	/* ---------- alarms & medicines ---------- */
+
+	async ackAlarm(key: string) {
+		const x = this.house.alarmSlots().find((q) => q.key === key);
+		if (!x || x.ack) return;
+		const h = this.house,
+			by = x.t === 'all' ? this.me! : x.t,
+			pts = x.a.pts ? h.award(x.a.pts, by) : 0,
+			id = uid(),
+			at = Date.now(),
+			name = `${x.a.emoji || '⏰'} ${x.a.label} ✓`;
+		this.s.log.unshift({ id, taskId: null, name, memberId: by, at, pts, alarmKey: key, medKey: null, slotAt: null });
+		this.s.balances[by] = (this.s.balances[by] || 0) + pts;
+		if (pts) burst(120);
+		if (x.a.extend && by === this.me && h.routineSteps('evening').some((s) => !h.doneRecently(s))) {
+			this.view = 'today';
+			this.guide = 'evening';
+			this.gskip = [];
+		} else this.showToast(pts ? `+${pts} pts — nicely done` : '👍 Great');
+		await this.send({ op: 'log.add', id, memberId: by, name, pts, at, alarmKey: key });
+	}
+
+	async extendAlarm(key: string) {
+		const x = this.house.alarmSlots().find((q) => q.key === key);
+		const { extendCost: cost, extendMax: max } = this.s.family;
+		if (!x || x.t === 'all' || x.ext >= max || this.house.balance(x.t) < cost) return;
+		this.s.redemptions.unshift({ id: uid(), memberId: x.t, name: '10 more minutes', emoji: '⏰', cost, at: Date.now(), ext: true, alarmId: x.a.id });
+		this.s.balances[x.t] -= cost;
+		this.showToast(`⏰ 10 more minutes — now ${hhmm(x.at + 6e5)}`);
+		await this.send({ op: 'alarm.extend', id: uid(), memberId: x.t, alarmId: x.a.id });
+	}
+
+	async medTaken(key: string) {
+		const x = this.house.findMedSlot(key);
+		if (!x || x.took) return;
+		const late = this.house.startOfDay > x.at,
+			id = uid(),
+			at = Date.now(),
+			name = '💊 ' + (x.m.label || 'Medicine') + ' taken' + (late ? ` (${WD[new Date(x.at).getDay()]} ${x.time})` : '');
+		this.s.log.unshift({ id, taskId: null, name, memberId: x.pid, at, pts: 0, alarmKey: null, medKey: key, slotAt: x.at });
+		this.showToast('💊 Ticked off');
+		await this.send({ op: 'log.add', id, memberId: x.pid, name, pts: 0, at, medKey: key, slotAt: x.at });
+	}
+
+	async medUntick(slot: MedSlot) {
+		if (!slot.took) return;
+		const lid = slot.took.id;
+		this.s.log = this.s.log.filter((l) => l.id !== lid);
+		this.showToast('Unticked');
+		await this.send({ op: 'log.delete', id: lid });
 	}
 
 	/* ---------- focus timer ---------- */

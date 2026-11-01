@@ -89,7 +89,24 @@ export async function loadFamilyState(db: DB, familyId: string, myMemberId: stri
 	if (!family) error(404, 'Family not found');
 	const strip = <T extends { familyId: string }>({ familyId: _f, ...rest }: T) => rest;
 	return {
-		family: { id: family.id, name: family.name, inviteCode: family.inviteCode, goal: family.goal, goalReward: family.goalReward },
+		family: {
+			id: family.id,
+			name: family.name,
+			inviteCode: family.inviteCode,
+			goal: family.goal,
+			goalReward: family.goalReward,
+			monthGoal: family.monthGoal,
+			monthGoalReward: family.monthGoalReward,
+			monthPrize: family.monthPrize,
+			adultRate: family.adultRate,
+			adultCap: family.adultCap,
+			budget: family.budget,
+			champStart: family.champStart,
+			extendCost: family.extendCost,
+			extendMax: family.extendMax,
+			alarms: family.alarms,
+			meds: family.meds
+		},
 		members: mem.map(({ familyId: _f, createdAt: _c, ...m }) => m),
 		rooms: rms.map(strip),
 		tasks: tks.map(strip),
@@ -113,6 +130,7 @@ export async function createFamily(db: DB, userId: string, input: CreateFamily) 
 		emoji: p.emoji,
 		color: PERSON_COLORS[i % PERSON_COLORS.length],
 		role: i === input.meIndex ? ('admin' as const) : ('member' as const),
+		kind: p.kind,
 		sort: i,
 		createdAt: now
 	}));
@@ -134,8 +152,13 @@ export async function createFamily(db: DB, userId: string, input: CreateFamily) 
 			id: familyId,
 			name: input.name,
 			inviteCode: newInviteCode(),
-			goal: input.starter ? 800 : 0,
+			goal: input.starter ? 500 : 0,
 			goalReward: 'Pizza & film night',
+			monthGoal: input.starter ? 2000 : 0,
+			monthGoalReward: 'Family day out',
+			monthPrize: 'Choose where we go for family dinner',
+			// the first monthly race starts on the 1st of next month
+			champStart: nextMonthStart(startOfDay),
 			createdAt: now
 		}),
 		// D1 allows max 100 bound parameters per statement, hence the chunking
@@ -143,7 +166,7 @@ export async function createFamily(db: DB, userId: string, input: CreateFamily) 
 		db.insert(rooms).values(
 			plan.rooms.map((r, i) => ({ id: roomIds.get(r.key)!, familyId, key: r.key, name: r.name, emoji: r.emoji, color: r.color, sort: i }))
 		),
-		...chunk(plan.tasks, 5).map((batch) =>
+		...chunk(plan.tasks, 4).map((batch) =>
 			db.insert(tasks).values(
 				batch.map((t) => ({
 					id: newId(),
@@ -159,6 +182,7 @@ export async function createFamily(db: DB, userId: string, input: CreateFamily) 
 					only: t.only ? t.only.map(idx).filter((x): x is string => !!x) : null,
 					days: t.days,
 					carry: t.carry,
+					once: false,
 					routine: t.routine,
 					sortOrder: t.sortOrder,
 					last: t.last,
@@ -184,6 +208,11 @@ export async function unlinkedMembers(db: DB, familyId: string) {
 		.from(members)
 		.where(and(eq(members.familyId, familyId), isNull(members.userId)))
 		.orderBy(asc(members.sort));
+}
+
+function nextMonthStart(ms: number) {
+	const d = new Date(ms);
+	return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
 }
 
 function chunk<T>(arr: T[], n: number) {

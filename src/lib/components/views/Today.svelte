@@ -1,9 +1,13 @@
 <script lang="ts">
 	import { getApp } from '#lib/client/app.svelte.ts';
 	import { ROUTINES, type RoutineKey } from '#lib/constants.ts';
-	import { hasDays, ptsFor } from '#lib/logic.ts';
+	import { hasDays } from '#lib/logic.ts';
 	import type { Task } from '#lib/types.ts';
+	import AlarmsCard from '../AlarmsCard.svelte';
+	import ChampionCard from '../ChampionCard.svelte';
 	import GoalCard from '../GoalCard.svelte';
+	import MedsCard from '../MedsCard.svelte';
+	import StreakCard from '../StreakCard.svelte';
 	import TaskRow from '../TaskRow.svelte';
 	import WhoRow from '../WhoRow.svelte';
 
@@ -29,9 +33,10 @@
 	const homeworkRoom = $derived(app.s.rooms.find((r) => r.key === 'homework')?.id);
 	const isHw = (t: Task) => !!homeworkRoom && t.roomId === homeworkRoom;
 	const isBig = (t: Task) => hasDays(t) && t.days.length <= 2 && !isHw(t);
-	const hw = $derived(due.filter(isHw));
-	const big = $derived(due.filter((t) => !isHw(t) && isBig(t)));
-	const rest = $derived(due.filter((t) => !isHw(t) && !isBig(t)));
+	const proj = $derived(due.filter((t) => t.once));
+	const hw = $derived(due.filter((t) => !t.once && isHw(t)));
+	const big = $derived(due.filter((t) => !t.once && !isHw(t) && isBig(t)));
+	const rest = $derived(due.filter((t) => !t.once && !isHw(t) && !isBig(t)));
 	const sum = (a: Task[]) => a.reduce((s, t) => s + (t.mins || 0), 0);
 	const satOnly = $derived(big.every((t) => t.days?.includes(6)));
 
@@ -85,22 +90,32 @@
 			{@render dots()}
 			<div class="sub" style="margin:0">{R.emoji} {R.label} · step {gSteps.indexOf(gCur) + 1} of {gSteps.length}</div>
 			<h2 style="font-size:30px;margin:14px 0 8px">{gCur.name}</h2>
-			<p class="sub">About {gCur.mins} min · +{ptsFor(gCur)} pts</p>
+			<p class="sub">About {gCur.mins} min · +{h.myPts(gCur)} pts</p>
 			<button class="btn block" style="padding:18px;font-size:18px" onclick={() => app.complete(gCur.id)}>Done! ✓</button>
 			<div class="gap mt">
 				<button class="btn ghost" onclick={() => app.gskip.push(gCur.id)}>Skip for now</button>
 				<button class="btn ghost" onclick={() => (app.guide = null)}>Stop</button>
 			</div>
 		</div>
-		<div class="sec-title">All steps</div>
+		<div class="sec-title">
+			All steps <small><button onclick={() => (app.sheet = { kind: 'reorder', key: app.guide! })} style="color:var(--accent);font-weight:800">↕ Change order</button></small>
+		</div>
 		{#each gSteps as s (s.id)}<TaskRow t={s} noRoom />{/each}
 	{/if}
 {:else}
+	<ChampionCard />
+	<MedsCard />
+	<AlarmsCard />
+	<StreakCard />
 	{#each routineCards as c (c.key)}
 		{@const R = ROUTINES[c.key]}
-		<div class="card" style="background:{c.key === 'morning' ? '#FFF4DC' : '#E9E6F7'}">
+		<div class="card" style="background:{R.bg}">
 			<div class="row-between">
-				<b style="font-size:17px">{R.emoji} {R.label}</b><span class="pts" style="font-size:14px">{c.done}/{c.steps.length}</span>
+				<b style="font-size:17px">{R.emoji} {R.label}</b>
+				<span>
+					<button onclick={() => (app.sheet = { kind: 'reorder', key: c.key })} style="font-size:12.5px;font-weight:800;color:var(--muted);margin-right:10px">↕ Order</button>
+					<span class="pts" style="font-size:14px">{c.done}/{c.steps.length}</span>
+				</span>
 			</div>
 			<div style="display:flex;gap:6px;margin:12px 0">
 				{#each c.steps as s (s.id)}
@@ -128,7 +143,7 @@
 		{@const r = h.roomOf(oneTask.roomId)}
 		<div class="card big-one">
 			<div class="emoji">{r.emoji}</div>
-			<div class="sub" style="margin:4px 0 0">{r.name} · {oneTask.mins} min · +{ptsFor(oneTask)} pts</div>
+			<div class="sub" style="margin:4px 0 0">{r.name} · {oneTask.mins} min · +{h.myPts(oneTask)} pts</div>
 			<h2>{oneTask.name}</h2>
 			<p class="sub">Just this one. Nothing else matters for the next {oneTask.mins} minutes.</p>
 			<div class="gap">
@@ -177,7 +192,11 @@
 			<div class="sec-title">📚 Homework <small>{hw.length} · {sum(hw)} min</small></div>
 			{#each hw as t (t.id)}<TaskRow {t} />{/each}
 		{/if}
-		<div class="sec-title">{big.length || hw.length ? 'Everyday jobs' : 'Due now'} <small>{rest.length}</small></div>
+		{#if proj.length}
+			<div class="sec-title">🎨 One-off projects <small>{proj.length}</small></div>
+			{#each proj as t (t.id)}<TaskRow {t} />{/each}
+		{/if}
+		<div class="sec-title">{big.length || hw.length || proj.length ? 'Everyday jobs' : 'Due now'} <small>{rest.length}</small></div>
 		{#each rest as t (t.id)}<TaskRow {t} />{:else}
 			<div class="empty"><div class="emoji">🌿</div>All caught up. The house can wait — go sit down.</div>
 		{/each}

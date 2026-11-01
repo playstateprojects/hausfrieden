@@ -66,7 +66,8 @@ export function starterPlan(people: { name: string }[], now: number, startOfDay:
 		['hall', 'Hallway', '🚪'],
 		['laundry', 'Laundry', '🧺'],
 		['desk', 'Desks & papers', '🗂️'],
-		['homework', 'Homework', '📚']
+		['homework', 'Homework', '📚'],
+		['kindness', 'Kindness', '💛']
 	];
 	const rooms: StarterRoom[] = R.filter(
 		([k]) => !(k === 'kid2' && K2 === null) && !(k === 'kid1' && K1 === null) && !(k === 'homework' && !KIDS.length)
@@ -76,16 +77,21 @@ export function starterPlan(people: { name: string }[], now: number, startOfDay:
 		SCHOOL = [1, 2, 3, 4, 5],
 		NIGHTS = [0, 1, 2, 3, 4];
 	const kidsOnly = KIDS.length ? KIDS : null;
+	const BOTH = has(1) ? [0, 1] : null;
 	const anyK2 = K2 ?? 'anyone',
 		anyK1 = K1 ?? 'anyone';
 
 	const T: Spec[] = [
-		{ n: 'Open your curtains', r: 'routines', m: 1, each: 1, rt: 'morning', o: 1, pts: 3 },
-		{ n: 'Have a shower', r: 'routines', m: 10, each: 1, rt: 'morning', o: 2, pts: 8 },
-		{ n: 'Get dressed & pyjamas away', r: 'routines', m: 5, each: 1, rt: 'morning', o: 3, pts: 5 },
+		{ n: 'Have a shower', r: 'routines', m: 10, each: 1, rt: 'morning', o: 1, pts: 8 },
+		{ n: 'Get dressed & pyjamas away', r: 'routines', m: 5, each: 1, rt: 'morning', o: 2, pts: 5 },
+		{ n: 'Open your curtains', r: 'routines', m: 1, each: 1, rt: 'morning', o: 3, pts: 3 },
 		{ n: 'Make your bed', r: 'routines', m: 2, each: 1, rt: 'morning', o: 4, pts: 4 },
 		{ n: 'Make your own breakfast', r: 'routines', m: 10, each: 1, only: kidsOnly, rt: 'morning', o: 5, pts: 10 },
 		{ n: 'Make your own lunch box', r: 'routines', m: 10, each: 1, only: kidsOnly, days: SCHOOL, rt: 'morning', o: 6, pts: 10 },
+		{ n: 'Unpack your school bag (letters to a grown-up!)', r: 'routines', m: 3, each: 1, only: kidsOnly, days: SCHOOL, rt: 'afternoon', o: 1, pts: 4 },
+		{ n: 'Lunch box into the dishwasher', r: 'routines', m: 2, each: 1, only: kidsOnly, days: SCHOOL, rt: 'afternoon', o: 2, pts: 4 },
+		{ n: 'Have a snack & clear up after yourself', r: 'routines', m: 5, each: 1, only: kidsOnly, rt: 'afternoon', o: 3, pts: 4 },
+		{ n: '10-minute room reset', r: 'routines', m: 10, each: 1, only: kidsOnly, rt: 'afternoon', o: 4, pts: 8 },
 		{ n: 'Pack your school bag for tomorrow', r: 'routines', m: 5, each: 1, only: kidsOnly, days: NIGHTS, rt: 'evening', o: 1, pts: 6 },
 		{ n: 'Lay out clothes for tomorrow', r: 'routines', m: 3, each: 1, only: kidsOnly, days: NIGHTS, rt: 'evening', o: 2, pts: 4 },
 		{ n: 'Dirty clothes in the wash basket', r: 'routines', m: 2, each: 1, rt: 'evening', o: 3, pts: 3 },
@@ -100,12 +106,13 @@ export function starterPlan(people: { name: string }[], now: number, startOfDay:
 		{ n: 'Take out the bins & recycling', r: 'kitchen', e: 3, m: 5, w: anyK1 },
 		{ n: 'Clear out the fridge', r: 'kitchen', e: 7, m: 15, w: A2 },
 		{ n: 'Plan meals & shopping list', r: 'kitchen', e: 7, m: 15, w: A1 },
+		{ n: 'Cook dinner', r: 'kitchen', m: 45, team: BOTH, pts: 40 },
 		{ n: '10-thing pick-up', r: 'living', m: 5 },
 		{ n: 'Fold blankets & plump cushions', r: 'living', m: 3, w: anyK2 },
 		{ n: 'Clear the coffee table', r: 'living', m: 3 },
 		{ n: 'Wipe sink & mirror', r: 'bath', e: 3, m: 5 },
 		{ n: 'Clothes off the floor', r: 'bed', e: 2, m: 5 },
-		{ n: 'Change the sheets', r: 'bed', e: 14, m: 15, w: A1 },
+		{ n: 'Change the sheets', r: 'bed', e: 14, m: 15, team: BOTH },
 		{ n: 'Put toys back in their homes', r: 'kid2', m: 10, w: K2 },
 		{ n: 'Change your sheets (with help)', r: 'kid1', e: 14, m: 15, w: K1 },
 		{ n: 'Put on a wash', r: 'laundry', e: 2, m: 5, w: A2 },
@@ -120,6 +127,8 @@ export function starterPlan(people: { name: string }[], now: number, startOfDay:
 		{ n: 'Vacuum the whole flat', r: 'living', m: 30, w: A1, days: SAT, carry: 1 },
 		{ n: 'Dust all surfaces', r: 'living', m: 20, w: A1, days: SAT, carry: 1 },
 		{ n: 'Mop the floors', r: 'kitchen', m: 20, w: A1, days: SAT, carry: 1 },
+		{ n: 'Tidy our bedroom', r: 'bed', m: 15, team: BOTH, days: SAT, carry: 1 },
+		{ n: '💛 Do something nice for someone', r: 'kindness', m: 5, each: 1, pts: 10 },
 		{ n: 'Fresh towels', r: 'bath', m: 5, w: anyK2, days: SAT, carry: 1 },
 		{ n: 'Tidy your room', r: 'kid1', m: 20, w: K1, days: SAT, carry: 1, pts: 25 },
 		{ n: 'Vacuum your room', r: 'kid1', m: 10, w: K1, days: SAT, carry: 1, pts: 15 },
@@ -173,8 +182,7 @@ export function starterPlan(people: { name: string }[], now: number, startOfDay:
 			['🍦', 'Ice cream outing', 150],
 			['☕', 'Lie-in & coffee in bed', 150],
 			['🥞', 'Pancake breakfast of your choice', 200],
-			['🎟️', 'Day-out pick', 400],
-			['🎁', 'Big treat (agree it together)', 600]
+			['🩳', 'Pyjama day', 300]
 		] as const
 	).map(([emoji, name, cost]) => ({ emoji, name, cost }));
 

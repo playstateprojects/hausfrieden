@@ -13,7 +13,7 @@
 		const id = uid(),
 			at = Date.now();
 		app.sheet = null;
-		app.s.log.unshift({ id, taskId: null, name, memberId: who, at, pts });
+		app.s.log.unshift({ id, taskId: null, name, memberId: who, at, pts, alarmKey: null, medKey: null, slotAt: null });
 		app.s.balances[who] = (app.s.balances[who] || 0) + pts;
 		burst();
 		app.showToast(`+${pts} for ${app.house.person(who)?.name}!`);

@@ -4,6 +4,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { env } from 'cloudflare:workers';
 import { getDb, schema } from './db/index.ts';
+import { sendEmail } from './email.ts';
 import { hashPassword, verifyPassword } from './password.ts';
 
 function build(baseURL: string) {
@@ -23,9 +24,18 @@ function build(baseURL: string) {
 		emailAndPassword: {
 			enabled: true,
 			minPasswordLength: 8,
+			sendResetPassword: async ({ user, url }) => {
+				await sendEmail(user.email, 'Reset your Hausfrieden password', `Reset your password:\n\n${url}`);
+			},
 			password: {
 				hash: hashPassword,
 				verify: ({ hash, password }) => verifyPassword(hash, password)
+			}
+		},
+		emailVerification: {
+			sendOnSignUp: true,
+			sendVerificationEmail: async ({ user, url }) => {
+				await sendEmail(user.email, 'Verify your Hausfrieden email', `Confirm your email address:\n\n${url}`);
 			}
 		},
 		session: {

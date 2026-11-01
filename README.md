@@ -3,7 +3,7 @@
 Everyday jobs, points and treats for the whole family. A SvelteKit port of the original
 single-file Claude artifact, now with real accounts and support for many families.
 
-**Stack:** SvelteKit 3 (Svelte 5 runes, TypeScript) · Cloudflare Pages + D1 · Drizzle ORM ·
+**Stack:** SvelteKit 3 (Svelte 5 runes, TypeScript) · Cloudflare Workers + D1 · Drizzle ORM ·
 better-auth (email + password) · zod
 
 ## How it fits together
@@ -41,21 +41,22 @@ npm run preview                         # builds and runs in the real Workers ru
 1. Edit `src/lib/server/db/schema.ts`
 2. `npm run db:generate` — writes a new SQL migration into `drizzle/`
 3. `npm run db:migrate:local` to try it, commit the migration
-4. After merging, run `npm run db:migrate:remote` (migrations are **not** applied by the Pages build)
+4. After merging, run `npm run db:migrate:remote` (migrations are **not** applied by the Workers build)
 
 If you change `wrangler.toml` bindings, run `npm run cf-typegen`.
 
-## Deploying to Cloudflare Pages (one-time setup)
+## Deploying to Cloudflare Workers (one-time setup)
 
 1. `npx wrangler d1 create hausfrieden` and paste the `database_id` into `wrangler.toml`.
 2. `npm run db:migrate:remote`
-3. Cloudflare dashboard → Workers & Pages → Create → Pages → **Connect to Git** → this repo.
-   - Framework preset: SvelteKit · Build command: `npm run build` · Output: `.svelte-kit/cloudflare`
-   - The D1 binding and compatibility flags come from `wrangler.toml`.
-4. Settings → Variables and Secrets → add `BETTER_AUTH_SECRET` (Production **and** Preview).
+3. Cloudflare dashboard → Workers & Pages → Create → Import a repository → this repo.
+   - Build command: `npm run build` · Deploy command: `npx wrangler deploy`
+   - Non-production branch command: `npx wrangler versions upload` (gives preview URLs)
+   - The D1 binding, assets and compatibility flags come from `wrangler.toml`.
+4. Settings → Variables and Secrets → add `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `RESEND_FROM`.
 5. Push to `main` → production deploy. Any other branch / PR → preview URL.
 
 ## Working on it with Claude
 
 See `CLAUDE.md`. Suggested flow: ask Claude to make a change on a branch and open a PR,
-check the Pages preview link on the PR, merge to deploy.
+check the preview link on the PR, merge to deploy.

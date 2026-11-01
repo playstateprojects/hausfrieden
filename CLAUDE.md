@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Hausfrieden: a family chores/points app. SvelteKit 3 + Svelte 5 runes + TypeScript, deployed on
-Cloudflare Pages with D1 (Drizzle), auth via better-auth, validation via zod. See README.md.
+Cloudflare Workers with D1 (Drizzle), auth via better-auth, validation via zod. See README.md.
 
 ## SvelteKit 3 conventions (differs from SvelteKit 2!)
 - No `svelte.config.js` — config is passed to `sveltekit()` in `vite.config.ts`.
@@ -27,4 +27,4 @@ npm run build
 Schema change? `npm run db:generate` and commit the migration in `drizzle/`. Remind the human to run `npm run db:migrate:remote` after merge.
 
 ## Workflow
-Work on a branch and open a PR; Cloudflare Pages posts a preview URL. `main` deploys to production.
+Work on a branch and open a PR; Cloudflare Workers Builds posts a preview URL. `main` deploys to production.

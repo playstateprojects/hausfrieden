@@ -1,15 +1,19 @@
 name = "hausfrieden"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".svelte-kit/cloudflare"
+main = ".svelte-kit/cloudflare/_worker.js"
+
+[assets]
+binding = "ASSETS"
+directory = ".svelte-kit/cloudflare"
 
 # Create with: npx wrangler d1 create hausfrieden
 # then paste the database_id it prints below.
 [[d1_databases]]
 binding = "DB"
 database_name = "hausfrieden"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "123ef542-005d-49c6-8b25-fce1c0243584"
 migrations_dir = "drizzle"
 
-# BETTER_AUTH_SECRET must be set as a secret (Pages → Settings → Variables and Secrets),
+# BETTER_AUTH_SECRET must be set as a secret (Worker → Settings → Variables and Secrets),
 # and in .dev.vars for local development. Never commit it here.

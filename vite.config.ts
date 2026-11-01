@@ -10,7 +10,7 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			// Builds for Cloudflare Pages (see pages_build_output_dir in wrangler.toml).
+			// Builds for Cloudflare Workers (see main/assets in wrangler.toml).
 			adapter: adapter()
 		})
 	]

@@ -2,6 +2,8 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { AppState, setApp, type View } from '#lib/client/app.svelte.ts';
 	import { unlockAudio } from '#lib/client/fx.ts';
+	import { scheduleNotifications } from '#lib/client/notify.ts';
+	import { House } from '#lib/logic.ts';
 	import AlarmOverlay from '#lib/components/AlarmOverlay.svelte';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import AlarmsSheet from '#lib/components/sheets/AlarmsSheet.svelte';
@@ -68,6 +70,13 @@
 		void app.s.tasks;
 		void app.selDay;
 		const t = setTimeout(() => app.checkRings(), 700);
+		return () => clearTimeout(t);
+	});
+	// hand upcoming alarms and medicine times to the OS so they ring with the app closed (native only)
+	$effect(() => {
+		void app.s;
+		void app.me;
+		const t = setTimeout(() => scheduleNotifications(new House(app.s, app.me ?? '', Date.now())), 500);
 		return () => clearTimeout(t);
 	});
 	onDestroy(() => app.destroy());

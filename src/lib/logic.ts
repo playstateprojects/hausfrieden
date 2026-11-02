@@ -258,9 +258,12 @@ export class House {
 	extToday = (pid: string, alarmId: string) =>
 		this.s.redemptions.filter((x) => x.memberId === pid && x.ext && x.alarmId === alarmId && x.at >= this.startOfDay).length;
 
-	alarmSlots = (): AlarmSlot[] => {
-		const wd = new Date(this.now).getDay(),
-			dk = dayKey(this.now),
+	alarmSlots = (): AlarmSlot[] => this.alarmSlotsOn(this.startOfDay);
+
+	/** Alarm slots on one day (local midnight); extensions only exist for today. */
+	alarmSlotsOn = (day: number): AlarmSlot[] => {
+		const wd = new Date(day).getDay(),
+			dk = dayKey(day),
 			out: AlarmSlot[] = [];
 		const logByAlarm = new Map<string, LogEntry>();
 		for (const l of this.s.log) if (l.alarmKey) logByAlarm.set(l.alarmKey, l);
@@ -268,12 +271,12 @@ export class House {
 			if (!a.on || !/^\d\d:\d\d$/.test(a.time || '')) continue;
 			if (a.days.length && !a.days.includes(wd)) continue;
 			const [hh, mm] = a.time.split(':').map(Number),
-				d = new Date(this.now);
+				d = new Date(day);
 			d.setHours(hh, mm, 0, 0);
 			const targets = a.who === 'all' || !a.who.length ? ['all'] : a.who;
 			for (const t of targets) {
 				if (!this.visibleHere(t)) continue;
-				const ext = a.extend && t !== 'all' ? this.extToday(t, a.id) : 0,
+				const ext = a.extend && t !== 'all' && day === this.startOfDay ? this.extToday(t, a.id) : 0,
 					key = a.id + '_' + t + '_' + dk;
 				out.push({ a, t, base: d.getTime(), at: d.getTime() + ext * 6e5, ext, key, ack: logByAlarm.get(key) });
 			}

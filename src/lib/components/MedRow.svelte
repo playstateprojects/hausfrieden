@@ -2,7 +2,7 @@
 	import { getApp, hhmm } from '#lib/client/app.svelte.ts';
 	import type { MedSlot } from '#lib/logic.ts';
 
-	let { x, showWho = false }: { x: MedSlot; showWho?: boolean } = $props();
+	let { x, showWho = false, readonly = false }: { x: MedSlot; showWho?: boolean; readonly?: boolean } = $props();
 	const app = getApp();
 	const p = $derived(app.house.person(x.pid));
 	const past = $derived(app.now >= x.at);
@@ -19,6 +19,7 @@
 	let confirm = $state(false);
 
 	function tap() {
+		if (readonly) return;
 		if (!x.took) return app.medTaken(x.key);
 		if (!confirm) {
 			confirm = true;

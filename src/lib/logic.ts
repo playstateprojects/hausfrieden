@@ -1,7 +1,7 @@
 // Scheduling, points and assignment logic — ported 1:1 from the original artifact.
 // Pure functions over a FamilyState snapshot, a "me" member id and a clock.
 import { DAY, MILESTONES, MONTHS, ROUTINES, WD, type RoutineKey } from './constants.ts';
-import type { Alarm, FamilyState, LogEntry, Med, Member, Room, Task } from './types.ts';
+import type { Alarm, FamilyEvent, FamilyState, LogEntry, Med, Member, Room, Task } from './types.ts';
 
 export type Status = ['due' | 'soon' | 'ok', string];
 export type Scope = 'me' | 'all';
@@ -18,6 +18,25 @@ export const dayKey = (ms: number) => {
 	const d = new Date(ms);
 	return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
 };
+
+export const ymd = (ms: number) => {
+	const d = new Date(ms);
+	return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+export const fromYmd = (s: string) => {
+	const [y, m, d] = String(s).split('-').map(Number);
+	return new Date(y, m - 1, d).getTime();
+};
+export const addDays = (ms: number, n: number) => {
+	const d = new Date(ms);
+	d.setDate(d.getDate() + n);
+	d.setHours(0, 0, 0, 0);
+	return d.getTime();
+};
+export const inWindow = (t: Pick<Task, 'activeFrom' | 'activeUntil'>, day: number) =>
+	(!t.activeFrom || day >= t.activeFrom) && (!t.activeUntil || day < t.activeUntil);
+export const evWho = (e: FamilyEvent): string[] | 'all' => (e.who === 'all' || !Array.isArray(e.who) || !e.who.length ? 'all' : e.who);
+export const isRep = (e: FamilyEvent) => Array.isArray(e.repeat) && e.repeat.length > 0;
 
 export function ago(ms: number, now = Date.now()) {
 	const m = Math.round((now - ms) / 6e4);
@@ -80,14 +99,14 @@ export class House {
 		return t.last || 0;
 	}
 
-	/** >= 1 means due. Day-scheduled tasks are due on their day (and, with carry, until done). */
+	/** >= 1 means due. Day-scheduled tasks are due on their day only; missed days are ticked off from the calendar. */
 	ratio = (t: Task, pid?: string): number => {
 		const l = this.lastFor(t, pid),
 			now = this.now;
 		if (t.once) return l ? -1 : 9;
 		if (hasDays(t)) {
 			const lo = this.lastOcc(t);
-			if (l < lo && (lo === this.startOfDay || t.carry)) return 1 + daysBetween(lo, now) / 7 + (t.carry ? 0 : 0.01);
+			if (l < lo && lo === this.startOfDay) return 1.01;
 			const from = Math.max(l ? sod(l) : 0, lo),
 				nx = this.nextOcc(t);
 			return Math.min(0.99, Math.max(0, (now - from) / Math.max(DAY, nx - from)));
@@ -141,7 +160,7 @@ export class House {
 
 	/** Everyday list — excludes routine steps (they have their own guided card). */
 	scoped = (scope: Scope) => {
-		const all = this.tasks.filter((t) => !t.routine);
+		const all = this.tasks.filter((t) => !t.routine && inWindow(t, this.startOfDay));
 		if (scope === 'all') return all.filter((t) => !t.each || this.forMe(t));
 		return all.filter((t) => this.forMe(t));
 	};
@@ -294,6 +313,82 @@ export class House {
 		for (let n = 0; n < 31; n++) for (const p of this.s.members) for (const x of this.medSlotsOn(p.id, this.dayN(n))) if (x.key === key) return x;
 		return null;
 	};
+
+	/* ---------- calendar, days and the daily ring ---------- */
+
+	isHw = (t: Task) => this.roomOf(t.roomId).key === 'homework';
+
+	/** Kids only see events that include them; grown-ups see everything. */
+	seesEvent = (e: FamilyEvent) => {
+		if (!this.me || this.isAdult(this.me)) return true;
+		const w = evWho(e);
+		return w === 'all' || w.includes(this.me);
+	};
+	eventsOn = (day: number) =>
+		this.s.events
+			.filter((e) =>
+				isRep(e)
+					? e.repeat!.includes(new Date(day).getDay()) && day >= fromYmd(e.date) && (!e.until || day <= fromYmd(e.until))
+					: e.date === ymd(day)
+			)
+			.filter(this.seesEvent)
+			.sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+
+	// completion lookup by "who|task|day", rebuilt whenever the log changes
+	private li: Map<string, LogEntry> | null = null;
+	private liSrc: LogEntry[] | null = null;
+	private liLen = -1;
+	private liTop: string | undefined;
+	private logIdx() {
+		const log = this.s.log;
+		if (!this.li || this.liSrc !== log || this.liLen !== log.length || this.liTop !== log[0]?.id) {
+			this.li = new Map();
+			for (const l of log) if (l.taskId) this.li.set(l.memberId + '|' + l.taskId + '|' + dayKey(l.at), l);
+			this.liSrc = log;
+			this.liLen = log.length;
+			this.liTop = log[0]?.id;
+		}
+		return this.li;
+	}
+	doneOn = (t: Task, pid: string, day: number) => this.logIdx().get(pid + '|' + t.id + '|' + dayKey(day));
+
+	tasksForDay = (pid: string, day: number) => {
+		const wd = new Date(day).getDay();
+		return this.tasks.filter((t) => {
+			if (!this.forMe(t, pid) || !inWindow(t, day)) return false;
+			if (hasDays(t) && !t.days.includes(wd)) return false;
+			const l = this.lastFor(t, pid);
+			if (t.once && l && l < day) return false;
+			if (t.createdAt && day < sod(t.createdAt) && !this.doneOn(t, pid, day)) return false;
+			return true;
+		});
+	};
+
+	/** The day ring counts a person's own daily commitments: routines, homework, daily jobs and that day's scheduled jobs. */
+	ringTasks = (pid: string, day: number) =>
+		this.tasksForDay(pid, day).filter(
+			(t) =>
+				!t.once &&
+				(t.each || t.who === pid || (Array.isArray(t.team) && t.team.includes(pid))) &&
+				(t.routine || this.isHw(t) || hasDays(t) || t.activeFrom || +t.every === 1)
+		);
+	ringDone = (t: Task, pid: string, day: number) => {
+		if (Array.isArray(t.team) && t.team.length && !t.each) return t.team.some((id) => !!this.doneOn(t, id, day));
+		return !!this.doneOn(t, pid, day);
+	};
+	/** 0..1, or null when the person has nothing in their ring that day. */
+	dayProgress = (pid: string, day: number) => {
+		const list = this.ringTasks(pid, day);
+		if (!list.length) return null;
+		return list.filter((t) => this.ringDone(t, pid, day)).length / list.length;
+	};
+
+	/* ---------- private list and tasks for each other ---------- */
+
+	myTodos = () => this.s.todos.filter((t) => t.memberId === this.me);
+	otherAdults = () => this.s.members.filter((p) => p.kind === 'adult' && p.id !== this.me);
+	handIn = () => this.s.handoffs.filter((x) => x.toId === this.me);
+	handOut = () => this.s.handoffs.filter((x) => x.fromId === this.me);
 
 	routineBonusName = (key: RoutineKey) => ROUTINES[key].label + ' complete';
 }

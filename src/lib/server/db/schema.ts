@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
-import type { Alarm, Med } from '../../types.ts';
+import type { Alarm, EventKind, Med } from '../../types.ts';
 
 /* ------------------------------------------------------------------ */
 /* better-auth core tables (field names must match better-auth's model) */
@@ -180,6 +180,11 @@ export const tasks = sqliteTable(
 		/** One-off project: due until done once. */
 		once: integer('once', { mode: 'boolean' }).notNull().default(false),
 		routine: text('routine', { enum: ['morning', 'afternoon', 'evening'] }),
+		/** Only shows from this day (epoch ms, local midnight) up to but not including `activeUntil`. */
+		activeFrom: integer('active_from'),
+		activeUntil: integer('active_until'),
+		/** Set on the "Revise: …" tasks generated from a calendar test. */
+		prepFor: text('prep_for'),
 		sortOrder: integer('sort_order').notNull().default(0),
 		last: integer('last').notNull().default(0),
 		lastBy: text('last_by'),
@@ -210,7 +215,9 @@ export const logEntries = sqliteTable(
 		alarmKey: text('alarm_key'),
 		/** Set when the entry records a medicine dose; `slotAt` is when it was due. */
 		medKey: text('med_key'),
-		slotAt: integer('slot_at')
+		slotAt: integer('slot_at'),
+		/** Ticked off later for a past day by a grown-up. */
+		fixed: integer('fixed', { mode: 'boolean' }).notNull().default(false)
 	},
 	(t) => [index('log_family_at_idx').on(t.familyId, t.at)]
 );
@@ -248,4 +255,92 @@ export const redemptions = sqliteTable(
 		alarmId: text('alarm_id')
 	},
 	(t) => [index('redemptions_family_at_idx').on(t.familyId, t.at)]
+);
+
+/** Family calendar: tests, appointments, birthdays… Optionally repeating weekly. */
+export const events = sqliteTable(
+	'events',
+	{
+		id: text('id').primaryKey(),
+		familyId: text('family_id')
+			.notNull()
+			.references(() => families.id, { onDelete: 'cascade' }),
+		kind: text('kind').$type<EventKind>().notNull(),
+		title: text('title').notNull(),
+		/** YYYY-MM-DD (the first day, for repeating events). */
+		date: text('date').notNull(),
+		/** HH:MM or empty. */
+		time: text('time').notNull().default(''),
+		/** Member ids, or 'all'. */
+		who: text('who', { mode: 'json' }).$type<string[] | 'all'>().notNull().default(sql`'"all"'`),
+		note: text('note').notNull().default(''),
+		/** Days of revision reminders before a test. */
+		prep: integer('prep').notNull().default(0),
+		/** Weekdays (0 = Sunday) for weekly repeats. */
+		repeat: text('repeat', { mode: 'json' }).$type<number[] | null>(),
+		until: text('until'),
+		createdAt: integer('created_at').notNull()
+	},
+	(t) => [index('events_family_idx').on(t.familyId)]
+);
+
+/** Shared shopping list. */
+export const shoppingItems = sqliteTable(
+	'shopping_items',
+	{
+		id: text('id').primaryKey(),
+		familyId: text('family_id')
+			.notNull()
+			.references(() => families.id, { onDelete: 'cascade' }),
+		text: text('text').notNull(),
+		aisle: text('aisle').notNull().default('other'),
+		memberId: text('member_id'),
+		createdAt: integer('created_at').notNull(),
+		/** Timestamp it went in the basket, 0 if still to get. */
+		done: integer('done').notNull().default(0),
+		doneBy: text('done_by'),
+		/** Timestamp the basket was cleared, 0 if not. */
+		cleared: integer('cleared').notNull().default(0)
+	},
+	(t) => [index('shopping_family_idx').on(t.familyId)]
+);
+
+/** A to-do one grown-up sends another. */
+export const handoffs = sqliteTable(
+	'handoffs',
+	{
+		id: text('id').primaryKey(),
+		familyId: text('family_id')
+			.notNull()
+			.references(() => families.id, { onDelete: 'cascade' }),
+		fromId: text('from_id').notNull(),
+		toId: text('to_id').notNull(),
+		text: text('text').notNull(),
+		cat: text('cat', { enum: ['work', 'personal'] })
+			.notNull()
+			.default('work'),
+		done: integer('done').notNull().default(0),
+		createdAt: integer('created_at').notNull()
+	},
+	(t) => [index('handoffs_family_idx').on(t.familyId)]
+);
+
+/** Private to-dos ("My list"). Only the owner's device is sent them. */
+export const todos = sqliteTable(
+	'todos',
+	{
+		id: text('id').primaryKey(),
+		familyId: text('family_id')
+			.notNull()
+			.references(() => families.id, { onDelete: 'cascade' }),
+		memberId: text('member_id').notNull(),
+		text: text('text').notNull(),
+		cat: text('cat', { enum: ['work', 'personal'] })
+			.notNull()
+			.default('work'),
+		star: integer('star', { mode: 'boolean' }).notNull().default(false),
+		done: integer('done').notNull().default(0),
+		createdAt: integer('created_at').notNull()
+	},
+	(t) => [index('todos_family_member_idx').on(t.familyId, t.memberId)]
 );

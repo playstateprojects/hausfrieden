@@ -17,8 +17,18 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.test
+!.env.native
 
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .dev.vars
+
+# Capacitor
+/ios/App/Pods
+/ios/App/build
+/android/.gradle
+/android/build
+/android/app/build
+/android/local.properties
+/build-native

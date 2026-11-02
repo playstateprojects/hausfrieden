@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, inArray, max, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, max, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
-import { PERSON_COLORS } from '#lib/constants.ts';
+import { DAY, PERSON_COLORS } from '#lib/constants.ts';
 import { ptsFor } from '#lib/logic.ts';
 import type { Op } from '#lib/schemas.ts';
 import type { DB } from './db/index.ts';
-import { families, logEntries, members, redemptions, rewards, rooms, tasks } from './db/schema.ts';
+import { events, families, handoffs, logEntries, members, redemptions, rewards, rooms, shoppingItems, tasks, todos } from './db/schema.ts';
 import { assertMembers, balancesFor, newId, newInviteCode } from './family.ts';
 
 type Actor = { familyId: string; memberId: string; role: 'admin' | 'member' };
@@ -25,6 +25,13 @@ async function assertRoom(db: DB, familyId: string, roomId: string) {
 function awardPts(raw: number, kind: 'adult' | 'kid' | undefined, fam: { adultRate: number; adultCap: number } | undefined) {
 	if (kind !== 'adult' || !fam || fam.adultRate >= 1) return raw;
 	return Math.max(1, Math.min(fam.adultCap, Math.round(raw * fam.adultRate)));
+}
+
+/** Private to-dos belong to the signed-in member, or to someone without a login who shares this device. */
+async function assertTodoOwner(db: DB, actor: Actor, memberId: string) {
+	if (memberId === actor.memberId) return;
+	const m = await db.query.members.findFirst({ where: and(eq(members.id, memberId), eq(members.familyId, actor.familyId)) });
+	if (!m || m.userId) error(403, 'That list is private');
 }
 
 /** Applies one validated op to a family. Returns a small JSON-able result. */
@@ -112,19 +119,52 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 
 		case 'log.add':
 			await assertMembers(db, fid, [o.memberId]);
-			await db.insert(logEntries).values({
-				id: o.id,
-				familyId: fid,
-				taskId: null,
-				name: o.name,
-				memberId: o.memberId,
-				at: o.at ?? Date.now(),
-				pts: o.pts,
-				alarmKey: o.alarmKey ?? null,
-				medKey: o.medKey ?? null,
-				slotAt: o.slotAt ?? null
-			});
+			// ids like ring_<member>_<day> are deterministic so several open devices can't double-award
+			await db
+				.insert(logEntries)
+				.values({
+					id: o.id,
+					familyId: fid,
+					taskId: null,
+					name: o.name,
+					memberId: o.memberId,
+					at: o.at ?? Date.now(),
+					pts: o.pts,
+					alarmKey: o.alarmKey ?? null,
+					medKey: o.medKey ?? null,
+					slotAt: o.slotAt ?? null,
+					fixed: o.fixed ?? false
+				})
+				.onConflictDoNothing();
 			return {};
+
+		case 'task.tick': {
+			const t = await getTask(db, fid, o.id);
+			await assertMembers(db, fid, [o.memberId]);
+			const [actorRow, fam, target] = await Promise.all([
+				db.query.members.findFirst({ where: inFamily(members, actor.memberId) }),
+				db.query.families.findFirst({ where: eq(families.id, fid) }),
+				db.query.members.findFirst({ where: inFamily(members, o.memberId) })
+			]);
+			if (actorRow?.kind !== 'adult') error(403, 'Only grown-ups can tick things off for an earlier day');
+			if (o.at > Date.now()) error(400, 'That day hasn’t happened yet');
+			const pts = awardPts(ptsFor(t), target?.kind, fam);
+			const path = '$."' + o.memberId + '"';
+			const update = t.each
+				? db
+						.update(tasks)
+						.set({ lastFor: sql`json_set(coalesce(${tasks.lastFor}, '{}'), ${path}, ${o.at})` })
+						.where(and(inFamily(tasks, t.id), sql`coalesce(json_extract(${tasks.lastFor}, ${path}), 0) < ${o.at}`))
+				: db
+						.update(tasks)
+						.set({ last: o.at, lastBy: o.memberId })
+						.where(and(inFamily(tasks, t.id), lt(tasks.last, o.at)));
+			await db.batch([
+				update,
+				db.insert(logEntries).values({ id: o.logId, familyId: fid, taskId: t.id, name: t.name, memberId: o.memberId, at: o.at, pts, fixed: true })
+			]);
+			return { pts };
+		}
 
 		case 'log.delete':
 			await db.delete(logEntries).where(inFamily(logEntries, o.id));
@@ -245,6 +285,137 @@ export async function applyOp(db: DB, actor: Actor, o: Op): Promise<Record<strin
 				ext: true,
 				alarmId: o.alarmId
 			});
+			return {};
+		}
+
+		case 'event.save': {
+			const e = o.event;
+			await assertMembers(db, fid, e.who === 'all' ? [] : e.who);
+			const existing = await db.query.events.findFirst({ where: eq(events.id, e.id) });
+			if (existing && existing.familyId !== fid) error(400, 'Unknown event');
+			const fields = {
+				kind: e.kind,
+				title: e.title,
+				date: e.date,
+				time: e.time,
+				who: e.who === 'all' || !e.who.length ? ('all' as const) : e.who,
+				note: e.note,
+				prep: e.repeat?.length ? 0 : e.prep,
+				repeat: e.repeat?.length ? [...e.repeat].sort() : null,
+				until: e.until
+			};
+			const stmts = [
+				existing
+					? db.update(events).set(fields).where(inFamily(events, e.id))
+					: db.insert(events).values({ id: e.id, familyId: fid, ...fields, createdAt: Date.now() })
+			];
+			// a test with revision reminders gets a daily "Revise: …" homework task until the day
+			const prepId = 'prep-' + e.id;
+			if (e.kind === 'test' && fields.prep > 0 && !fields.repeat && o.prep) {
+				const room =
+					(await db.query.rooms.findFirst({ where: and(eq(rooms.familyId, fid), eq(rooms.key, 'homework')) })) ??
+					(await db.query.rooms.findFirst({ where: eq(rooms.familyId, fid), orderBy: rooms.sort }));
+				if (room) {
+					const list = fields.who === 'all' ? null : fields.who;
+					const single = list?.length === 1;
+					const taskFields = {
+						name: '📚 Revise: ' + e.title,
+						roomId: room.id,
+						every: 1,
+						mins: 20,
+						pts: 20,
+						who: single ? list![0] : null,
+						team: null,
+						each: !single,
+						only: single ? null : list,
+						days: null,
+						carry: false,
+						once: false,
+						routine: null,
+						activeFrom: o.prep.from,
+						activeUntil: o.prep.until,
+						prepFor: e.id
+					};
+					const old = await db.query.tasks.findFirst({ where: inFamily(tasks, prepId) });
+					stmts.push(
+						(old
+							? db.update(tasks).set(taskFields).where(inFamily(tasks, prepId))
+							: db.insert(tasks).values({ id: prepId, familyId: fid, ...taskFields, sortOrder: 0, last: 0, lastBy: null, lastFor: {}, createdAt: Date.now() })) as never
+					);
+				}
+			} else stmts.push(db.delete(tasks).where(inFamily(tasks, prepId)) as never);
+			await db.batch(stmts as [(typeof stmts)[0], ...typeof stmts]);
+			return {};
+		}
+
+		case 'event.delete':
+			await db.batch([db.delete(events).where(inFamily(events, o.id)), db.delete(tasks).where(inFamily(tasks, 'prep-' + o.id))]);
+			return {};
+
+		case 'shop.add': {
+			await assertMembers(db, fid, [o.memberId]);
+			await db.insert(shoppingItems).values(
+				o.items.map((i) => ({ id: i.id, familyId: fid, text: i.text, aisle: i.aisle || 'other', memberId: o.memberId, createdAt: i.created, done: 0, cleared: 0 }))
+			);
+			return {};
+		}
+
+		case 'shop.set':
+			await db.update(shoppingItems).set({ done: o.done, doneBy: o.done ? o.doneBy : null }).where(inFamily(shoppingItems, o.id));
+			return {};
+
+		case 'shop.delete':
+			await db.delete(shoppingItems).where(inFamily(shoppingItems, o.id));
+			return {};
+
+		case 'shop.clear': {
+			const now = Date.now();
+			await db.batch([
+				db.update(shoppingItems).set({ cleared: now }).where(and(eq(shoppingItems.familyId, fid), gt(shoppingItems.done, 0), eq(shoppingItems.cleared, 0))),
+				db.delete(shoppingItems).where(and(eq(shoppingItems.familyId, fid), gt(shoppingItems.cleared, 0), lt(shoppingItems.cleared, now - 30 * DAY)))
+			]);
+			return {};
+		}
+
+		case 'handoff.add':
+			await assertMembers(db, fid, [o.fromId, o.toId]);
+			await db.insert(handoffs).values({ id: o.id, familyId: fid, fromId: o.fromId, toId: o.toId, text: o.text, cat: o.cat, done: 0, createdAt: o.created });
+			return {};
+
+		case 'handoff.set': {
+			await db.batch([
+				db.update(handoffs).set({ done: o.done }).where(inFamily(handoffs, o.id)),
+				db.delete(handoffs).where(and(eq(handoffs.familyId, fid), gt(handoffs.done, 0), lt(handoffs.done, Date.now() - 7 * DAY)))
+			]);
+			return {};
+		}
+
+		case 'handoff.delete':
+			await db.delete(handoffs).where(inFamily(handoffs, o.id));
+			return {};
+
+		case 'todo.save': {
+			const t = o.todo;
+			const existing = await db.query.todos.findFirst({ where: eq(todos.id, t.id) });
+			if (existing && existing.familyId !== fid) error(400, 'Unknown task');
+			if (existing) await assertTodoOwner(db, actor, existing.memberId);
+			await assertTodoOwner(db, actor, t.memberId);
+			const fields = { memberId: t.memberId, text: t.text, cat: t.cat, star: t.star, done: t.done };
+			await db.batch([
+				existing
+					? db.update(todos).set(fields).where(inFamily(todos, t.id))
+					: db.insert(todos).values({ id: t.id, familyId: fid, ...fields, createdAt: t.created }),
+				// finished items roll off after a week
+				db.delete(todos).where(and(eq(todos.familyId, fid), eq(todos.memberId, t.memberId), gt(todos.done, 0), lt(todos.done, Date.now() - 8 * DAY)))
+			]);
+			return {};
+		}
+
+		case 'todo.delete': {
+			const existing = await db.query.todos.findFirst({ where: inFamily(todos, o.id) });
+			if (!existing) return {};
+			await assertTodoOwner(db, actor, existing.memberId);
+			await db.delete(todos).where(inFamily(todos, o.id));
 			return {};
 		}
 

@@ -5,6 +5,7 @@
 	import AlarmOverlay from '#lib/components/AlarmOverlay.svelte';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import AlarmsSheet from '#lib/components/sheets/AlarmsSheet.svelte';
+	import EventSheet from '#lib/components/sheets/EventSheet.svelte';
 	import BonusSheet from '#lib/components/sheets/BonusSheet.svelte';
 	import GoalSheet from '#lib/components/sheets/GoalSheet.svelte';
 	import HomeSheet from '#lib/components/sheets/HomeSheet.svelte';
@@ -17,8 +18,10 @@
 	import RewardSheet from '#lib/components/sheets/RewardSheet.svelte';
 	import RoomsSheet from '#lib/components/sheets/RoomsSheet.svelte';
 	import TaskSheet from '#lib/components/sheets/TaskSheet.svelte';
+	import TodoSheet from '#lib/components/sheets/TodoSheet.svelte';
 	import Family from '#lib/components/views/Family.svelte';
 	import Focus from '#lib/components/views/Focus.svelte';
+	import Lists from '#lib/components/views/Lists.svelte';
 	import PickMe from '#lib/components/views/PickMe.svelte';
 	import Rooms from '#lib/components/views/Rooms.svelte';
 	import Today from '#lib/components/views/Today.svelte';
@@ -59,6 +62,14 @@
 			document.removeEventListener('visibilitychange', onVis);
 		};
 	});
+	// award the daily-ring bonus as soon as someone's ring is full
+	$effect(() => {
+		void app.s.log.length;
+		void app.s.tasks;
+		void app.selDay;
+		const t = setTimeout(() => app.checkRings(), 700);
+		return () => clearTimeout(t);
+	});
 	onDestroy(() => app.destroy());
 
 	const me = $derived(app.house.person(app.me));
@@ -67,6 +78,7 @@
 		['rooms', '🏠', 'Rooms'],
 		['focus', '⏱️', 'Focus'],
 		['treats', '🎁', 'Treats'],
+		['list', '📝', 'Lists'],
 		['family', '👨‍👩‍👧‍👦', 'Family']
 	];
 	const showFab = $derived(!!me && (app.view === 'today' || app.view === 'rooms'));
@@ -94,6 +106,8 @@
 			<Focus />
 		{:else if app.view === 'treats'}
 			<Treats />
+		{:else if app.view === 'list'}
+			<Lists />
 		{:else}
 			<Family />
 		{/if}
@@ -129,7 +143,9 @@
 		{:else if s.kind === 'reorder'}<ReorderSheet routine={s.key} />
 		{:else if s.kind === 'alarms'}<AlarmsSheet />
 		{:else if s.kind === 'meds'}<MedsSheet />
-		{:else if s.kind === 'medlog'}<MedLogSheet />{/if}
+		{:else if s.kind === 'medlog'}<MedLogSheet />
+		{:else if s.kind === 'event'}<EventSheet id={s.id} day={s.day} />
+		{:else if s.kind === 'todo'}<TodoSheet id={s.id} />{/if}
 	{/key}
 {/if}
 

@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { HISTORY_DAYS, DAY, PERSON_COLORS } from '#lib/constants.ts';
-import type { CreateFamily } from '#lib/schemas.ts';
+import type { CreateFamily, JoinFamily } from '#lib/schemas.ts';
 import { BASIC_ROOMS, starterPlan } from '#lib/starter.ts';
 import type { FamilyState } from '#lib/types.ts';
 import type { DB } from './db/index.ts';
-import { families, logEntries, members, redemptions, rewards, rooms, tasks } from './db/schema.ts';
+import { events, families, handoffs, logEntries, members, redemptions, rewards, rooms, shoppingItems, tasks, todos } from './db/schema.ts';
 
 export const newId = (): string => crypto.randomUUID();
 
@@ -66,7 +66,7 @@ export async function balancesFor(db: DB, familyId: string) {
 
 export async function loadFamilyState(db: DB, familyId: string, myMemberId: string): Promise<FamilyState> {
 	const since = Date.now() - HISTORY_DAYS * DAY;
-	const [family, mem, rms, tks, log, rws, red, balances] = await Promise.all([
+	const [family, mem, rms, tks, log, rws, red, balances, evs, shop, hand, allTodos] = await Promise.all([
 		db.query.families.findFirst({ where: eq(families.id, familyId) }),
 		db.select().from(members).where(eq(members.familyId, familyId)).orderBy(asc(members.sort), asc(members.createdAt)),
 		db.select().from(rooms).where(eq(rooms.familyId, familyId)).orderBy(asc(rooms.sort)),
@@ -84,7 +84,21 @@ export async function loadFamilyState(db: DB, familyId: string, myMemberId: stri
 			.where(and(eq(redemptions.familyId, familyId), gte(redemptions.at, since)))
 			.orderBy(desc(redemptions.at))
 			.limit(1000),
-		balancesFor(db, familyId)
+		balancesFor(db, familyId),
+		db.select().from(events).where(eq(events.familyId, familyId)),
+		// cleared items stay a month so they can be offered as "add again"
+		db
+			.select()
+			.from(shoppingItems)
+			.where(and(eq(shoppingItems.familyId, familyId), or(eq(shoppingItems.cleared, 0), gt(shoppingItems.cleared, Date.now() - 30 * DAY)))),
+		db
+			.select()
+			.from(handoffs)
+			.where(and(eq(handoffs.familyId, familyId), or(eq(handoffs.done, 0), gt(handoffs.done, Date.now() - 7 * DAY)))),
+		db
+			.select()
+			.from(todos)
+			.where(and(eq(todos.familyId, familyId), or(eq(todos.done, 0), gt(todos.done, Date.now() - 8 * DAY))))
 	]);
 	if (!family) error(404, 'Family not found');
 	const strip = <T extends { familyId: string }>({ familyId: _f, ...rest }: T) => rest;
@@ -113,6 +127,13 @@ export async function loadFamilyState(db: DB, familyId: string, myMemberId: stri
 		log: log.map(strip),
 		rewards: rws.map(strip),
 		redemptions: red.map(strip),
+		events: evs.map(({ familyId: _f, ...e }) => e),
+		shopping: shop.map(({ familyId: _f, ...x }) => x),
+		handoffs: hand.map(({ familyId: _f, ...x }) => x),
+		// private: yours, plus people who share a device because they have no login
+		todos: allTodos
+			.filter((t) => t.memberId === myMemberId || mem.find((m) => m.id === t.memberId)?.userId === null)
+			.map(({ familyId: _f, ...x }) => x),
 		balances,
 		myMemberId
 	};
@@ -219,4 +240,40 @@ function chunk<T>(arr: T[], n: number) {
 	const out: T[][] = [];
 	for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
 	return out;
+}
+
+/** Looks a family up by invite code, or throws 404. */
+export async function familyByCode(db: DB, code: string) {
+	const family = await db.query.families.findFirst({ where: eq(families.inviteCode, code.toUpperCase()) });
+	if (!family) error(404, 'That invite code doesn’t match a family. Ask for a fresh link.');
+	return family;
+}
+
+/** Links the user to a family: claims an unlinked member, or adds them as a new grown-up. */
+export async function joinFamily(db: DB, familyId: string, userId: string, input: JoinFamily) {
+	if (input.memberId) {
+		// claim an existing household member that has no login yet
+		const res = await db
+			.update(members)
+			.set({ userId })
+			.where(and(eq(members.id, input.memberId), eq(members.familyId, familyId), isNull(members.userId)))
+			.returning({ id: members.id });
+		if (!res.length) error(400, 'Someone already claimed that person. Pick another or add yourself.');
+		return;
+	}
+	if (!input.name) error(400, 'Tell us your name');
+	const existing = await db.select({ id: members.id }).from(members).where(eq(members.familyId, familyId));
+	await db.insert(members).values({
+		id: newId(),
+		familyId,
+		userId,
+		name: input.name,
+		emoji: input.emoji || '🙂',
+		color: PERSON_COLORS[existing.length % PERSON_COLORS.length],
+		role: 'member',
+		// people with their own login are grown-ups; edit under Household if not
+		kind: 'adult',
+		sort: existing.length,
+		createdAt: Date.now()
+	});
 }

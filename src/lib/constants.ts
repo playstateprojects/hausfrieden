@@ -95,3 +95,23 @@ export const IDEAS: Record<'weekly' | 'monthly' | 'champion' | 'treats', Idea[]>
 /** Ideas up to the given budget, most expensive first. */
 export const ideasFor = (kind: keyof typeof IDEAS, b: Budget) =>
 	IDEAS[kind].filter((i) => BRANK[i[2]] <= BRANK[b]).sort((x, y) => BRANK[y[2]] - BRANK[x[2]]);
+
+/** [kind, emoji, label, background] */
+export const EVENT_KIND_INFO: [string, string, string, string][] = [
+	['test', '📝', 'Test', '#FBE3DE'],
+	['sport', '⚽', 'Sport', '#D6ECE4'],
+	['appt', '🩺', 'Appointment', '#DCEBF8'],
+	['school', '🏫', 'School', '#E3F1EA'],
+	['bday', '🎂', 'Birthday', '#FDE2C4'],
+	['fun', '🎉', 'Fun', '#F6EFC2'],
+	['other', '📌', 'Other', '#EEE8F7']
+];
+export const kindOf = (k: string) => EVENT_KIND_INFO.find((x) => x[0] === k) ?? EVENT_KIND_INFO[5];
+
+/** Private/shared to-do categories: [emoji, label, background, accent]. */
+export const CATS: Record<'work' | 'personal', [string, string, string, string]> = {
+	work: ['💼', 'Work', '#DCEBF8', '#3B6EA8'],
+	personal: ['🏡', 'Personal', '#DDEFE9', '#2F7D6D']
+};
+
+export const RING_BONUS = 20;

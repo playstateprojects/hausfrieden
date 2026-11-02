@@ -17,5 +17,17 @@ export async function parseBody<S extends z.ZodType>(request: Request, schema: S
 	return res.data;
 }
 
-export const FAMILY_COOKIE = 'hf_family';
-export const familyCookieOpts = { path: '/', httpOnly: true, sameSite: 'lax' as const, maxAge: 60 * 60 * 24 * 365 };
+/** Origins of the Capacitor webviews (iOS, Android) and local dev, which call the API cross-origin. */
+export const NATIVE_ORIGINS = ['capacitor://localhost', 'https://localhost', 'http://localhost'];
+
+export function corsHeaders(origin: string): Record<string, string> {
+	return {
+		'access-control-allow-origin': origin,
+		'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+		'access-control-allow-headers': 'content-type, authorization',
+		// the bearer plugin returns the session token in this header on sign-in
+		'access-control-expose-headers': 'set-auth-token',
+		'access-control-max-age': '86400',
+		vary: 'Origin'
+	};
+}

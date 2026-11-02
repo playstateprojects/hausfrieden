@@ -64,6 +64,11 @@ export interface Task {
 	carry: boolean;
 	once: boolean;
 	routine: RoutineKey | null;
+	/** Shows only from this day up to (not including) `activeUntil`; epoch ms. */
+	activeFrom: number | null;
+	activeUntil: number | null;
+	/** Calendar event this revision task was generated from. */
+	prepFor: string | null;
 	sortOrder: number;
 	last: number;
 	lastBy: string | null;
@@ -81,6 +86,8 @@ export interface LogEntry {
 	alarmKey: string | null;
 	medKey: string | null;
 	slotAt: number | null;
+	/** Ticked off later for a past day. */
+	fixed: boolean;
 }
 
 export interface Reward {
@@ -99,6 +106,61 @@ export interface Redemption {
 	at: number;
 	ext: boolean;
 	alarmId: string | null;
+}
+
+export const EVENT_KINDS = ['test', 'sport', 'appt', 'school', 'bday', 'fun', 'other'] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+
+export interface FamilyEvent {
+	id: string;
+	kind: EventKind;
+	title: string;
+	/** YYYY-MM-DD; the first day for repeating events. */
+	date: string;
+	time: string;
+	who: string[] | 'all';
+	note: string;
+	prep: number;
+	repeat: number[] | null;
+	until: string | null;
+	createdAt: number;
+}
+
+export interface ShopItem {
+	id: string;
+	text: string;
+	aisle: string;
+	memberId: string | null;
+	createdAt: number;
+	/** When it went in the basket; 0 if still to get. */
+	done: number;
+	doneBy: string | null;
+	/** When the basket was cleared; 0 if not. */
+	cleared: number;
+}
+
+export type TodoCat = 'work' | 'personal';
+
+/** A to-do one grown-up sends another. */
+export interface Handoff {
+	id: string;
+	fromId: string;
+	toId: string;
+	text: string;
+	cat: TodoCat;
+	done: number;
+	createdAt: number;
+}
+
+/** A private to-do (never sent to anyone but its owner's devices). */
+export interface Todo {
+	id: string;
+	memberId: string;
+	text: string;
+	cat: TodoCat;
+	star: boolean;
+	done: number;
+	createdAt: number;
 }
 
 export interface FamilyInfo {
@@ -128,8 +190,30 @@ export interface FamilyState {
 	log: LogEntry[];
 	rewards: Reward[];
 	redemptions: Redemption[];
+	events: FamilyEvent[];
+	shopping: ShopItem[];
+	handoffs: Handoff[];
+	/** Private to-dos: yours, plus those of people who share a device (no login of their own). */
+	todos: Todo[];
 	/** All-time points earned minus spent, per member id. */
 	balances: Record<string, number>;
 	/** The member linked to the signed-in user in this family. */
 	myMemberId: string;
+}
+
+export interface SessionUser {
+	id: string;
+	name: string;
+	email: string;
+}
+
+/** GET /api/me */
+export interface Me {
+	user: SessionUser;
+	families: { id: string; name: string }[];
+}
+
+/** GET /api/bootstrap — `state` is null until the user belongs to a family. */
+export interface Bootstrap extends Me {
+	state: FamilyState | null;
 }

@@ -5,11 +5,16 @@
 	import type { Task } from '#lib/types.ts';
 	import AlarmsCard from '../AlarmsCard.svelte';
 	import ChampionCard from '../ChampionCard.svelte';
+	import DayPoints from '../DayPoints.svelte';
+	import EventsBlock from '../EventsBlock.svelte';
 	import GoalCard from '../GoalCard.svelte';
 	import MedsCard from '../MedsCard.svelte';
+	import RingLine from '../RingLine.svelte';
 	import StreakCard from '../StreakCard.svelte';
 	import TaskRow from '../TaskRow.svelte';
+	import WeekStrip from '../WeekStrip.svelte';
 	import WhoRow from '../WhoRow.svelte';
+	import DayView from './DayView.svelte';
 
 	const app = getApp();
 	const h = $derived(app.house);
@@ -30,13 +35,18 @@
 	const hour = $derived(new Date(app.now).getHours());
 	const greet = $derived(hour < 12 ? 'Morning' : hour < 18 ? 'Hi' : 'Evening');
 
-	const homeworkRoom = $derived(app.s.rooms.find((r) => r.key === 'homework')?.id);
-	const isHw = (t: Task) => !!homeworkRoom && t.roomId === homeworkRoom;
+	const isHw = (t: Task) => h.isHw(t);
 	const isBig = (t: Task) => hasDays(t) && t.days.length <= 2 && !isHw(t);
 	const proj = $derived(due.filter((t) => t.once));
 	const hw = $derived(due.filter((t) => !t.once && isHw(t)));
 	const big = $derived(due.filter((t) => !t.once && !isHw(t) && isBig(t)));
-	const rest = $derived(due.filter((t) => !t.once && !isHw(t) && !isBig(t)));
+	// your own jobs first, then the daily ones, then whatever is most overdue
+	const own = (t: Task) => t.each || t.who === app.me || (Array.isArray(t.team) && t.team.includes(app.me!));
+	const rest = $derived(
+		due
+			.filter((t) => !t.once && !isHw(t) && !isBig(t))
+			.sort((a, b) => +own(b) - +own(a) || +(b.every === 1) - +(a.every === 1) || h.ratio(b) - h.ratio(a))
+	);
 	const sum = (a: Task[]) => a.reduce((s, t) => s + (t.mins || 0), 0);
 	const satOnly = $derived(big.every((t) => t.days?.includes(6)));
 
@@ -61,7 +71,11 @@
 	);
 </script>
 
+{#if app.selDay !== h.startOfDay}
+	<DayView />
+{:else}
 <WhoRow />
+<WeekStrip />
 <h2 class="hello">{greet}, {me.name} {me.emoji}</h2>
 <p class="sub">
 	{due.length ? `${due.length} thing${due.length > 1 ? 's' : ''} due · about ${mins} min in total` : 'Nothing due right now.'}
@@ -103,10 +117,8 @@
 		{#each gSteps as s (s.id)}<TaskRow t={s} noRoom />{/each}
 	{/if}
 {:else}
-	<ChampionCard />
-	<MedsCard />
-	<AlarmsCard />
-	<StreakCard />
+	<EventsBlock day={h.startOfDay} withUpcoming />
+	<RingLine />
 	{#each routineCards as c (c.key)}
 		{@const R = ROUTINES[c.key]}
 		<div class="card" style="background:{R.bg}">
@@ -137,7 +149,7 @@
 		</div>
 	{/each}
 
-	<GoalCard />
+	<MedsCard />
 
 	{#if app.oneOpen && oneTask}
 		{@const r = h.roomOf(oneTask.roomId)}
@@ -153,6 +165,42 @@
 			<button class="note" style="display:block;margin:16px auto 0;font-weight:700" onclick={() => (app.oneOpen = false)}>Show the full list</button>
 		</div>
 	{:else}
+		<div class="seg" style="margin:18px 0 4px">
+			<button class:on={app.scope === 'me'} onclick={() => app.setScope('me')}>{me.name}’s list</button>
+			<button class:on={app.scope === 'all'} onclick={() => app.setScope('all')}>Whole family</button>
+		</div>
+
+		{#if big.length}
+			<div class="sec-title">{satOnly ? '🧽 Saturday deep clean' : '🧽 Big clean'} <small>{big.length} · ~{sum(big)} min</small></div>
+			{#each big as t (t.id)}<TaskRow {t} />{/each}
+		{/if}
+		{#if hw.length}
+			<div class="sec-title">📚 Homework <small>{hw.length} · {sum(hw)} min</small></div>
+			{#each hw as t (t.id)}<TaskRow {t} />{/each}
+		{/if}
+		<div class="sec-title">🧹 Jobs today <small>{rest.length}</small></div>
+		{#each rest as t (t.id)}<TaskRow {t} />{:else}
+			<div class="empty"><div class="emoji">🌿</div>All caught up. The house can wait — go sit down.</div>
+		{/each}
+		{#if proj.length}
+			<div class="sec-title">🎨 One-off projects <small>{proj.length}</small></div>
+			{#each proj as t (t.id)}<TaskRow {t} />{/each}
+		{/if}
+		{#if doneToday.length}
+			<details>
+				<summary class="sec-title">✅ Done today <small>{doneToday.length} ▾</small></summary>
+				{#each doneToday as t (t.id)}<TaskRow {t} />{/each}
+			</details>
+		{/if}
+		{#if soon.length}
+			<details>
+				<summary class="sec-title">Coming up <small>{soon.length} ▾</small></summary>
+				{#each soon as t (t.id)}<TaskRow {t} />{/each}
+			</details>
+		{/if}
+
+		<div style="height:14px"></div>
+		<AlarmsCard />
 		<div class="card">
 			<div class="row-between" style="margin-bottom:10px"><b>How much time have you got?</b></div>
 			<div class="chips">
@@ -178,38 +226,11 @@
 				>
 			{/if}
 		</div>
-
-		<div class="seg" style="margin:18px 0 4px">
-			<button class:on={app.scope === 'me'} onclick={() => app.setScope('me')}>{me.name}’s list</button>
-			<button class:on={app.scope === 'all'} onclick={() => app.setScope('all')}>Whole family</button>
-		</div>
-
-		{#if big.length}
-			<div class="sec-title">{satOnly ? '🧽 Saturday deep clean' : '🧽 Big clean'} <small>{big.length} · ~{sum(big)} min</small></div>
-			{#each big as t (t.id)}<TaskRow {t} />{/each}
-		{/if}
-		{#if hw.length}
-			<div class="sec-title">📚 Homework <small>{hw.length} · {sum(hw)} min</small></div>
-			{#each hw as t (t.id)}<TaskRow {t} />{/each}
-		{/if}
-		{#if proj.length}
-			<div class="sec-title">🎨 One-off projects <small>{proj.length}</small></div>
-			{#each proj as t (t.id)}<TaskRow {t} />{/each}
-		{/if}
-		<div class="sec-title">{big.length || hw.length || proj.length ? 'Everyday jobs' : 'Due now'} <small>{rest.length}</small></div>
-		{#each rest as t (t.id)}<TaskRow {t} />{:else}
-			<div class="empty"><div class="emoji">🌿</div>All caught up. The house can wait — go sit down.</div>
-		{/each}
-		{#if doneToday.length}
-			<div class="sec-title">Done today <small>{doneToday.length}</small></div>
-			{#each doneToday as t (t.id)}<TaskRow {t} />{/each}
-		{/if}
-		{#if soon.length}
-			<details>
-				<summary class="sec-title">Coming up <small>{soon.length} ▾</small></summary>
-				{#each soon as t (t.id)}<TaskRow {t} />{/each}
-			</details>
-		{/if}
+		<DayPoints day={h.startOfDay} />
+		<ChampionCard />
+		<StreakCard />
+		<GoalCard />
 		<p class="note">☁️ Synced — everyone in {app.s.family.name} sees the same list.</p>
 	{/if}
+{/if}
 {/if}

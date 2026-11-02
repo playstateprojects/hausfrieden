@@ -109,6 +109,9 @@
 	<button class="btn ghost" onclick={() => (app.sheet = { kind: 'meds' })}>💊 Medicines</button>
 </div>
 <button class="btn ghost block mt" onclick={() => (app.sheet = { kind: 'medlog' })}>📋 Medicine log</button>
+{#if h.isAdult(app.me!)}
+	<button class="btn ghost block mt" onclick={() => app.openFix()}>🕓 Fix yesterday in the calendar</button>
+{/if}
 <div class="gap mt">
 	<button class="btn ghost" onclick={() => (app.sheet = { kind: 'home' })}>Invite, homes & account</button>
 </div>

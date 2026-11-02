@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { getApp } from '#lib/client/app.svelte.ts';
-	import { authClient } from '#lib/client/auth.ts';
+	import { signOut as logout } from '#lib/client/auth.ts';
 	import Sheet from './Sheet.svelte';
 
 	const app = getApp();
@@ -34,17 +34,9 @@
 	async function rotate() {
 		await app.send({ op: 'invite.rotate' });
 	}
-	async function switchTo(id: string) {
-		app.sheet = null;
-		await fetch('/api/families', {
-			method: 'PUT',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ familyId: id })
-		});
-		await goto('/', { refreshAll: true });
-	}
+	const switchTo = (id: string) => app.switchFamily(id);
 	async function signOut() {
-		await authClient.signOut();
+		await logout();
 		await goto('/login', { refreshAll: true });
 	}
 </script>

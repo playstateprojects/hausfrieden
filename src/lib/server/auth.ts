@@ -1,10 +1,12 @@
 import { getRequestEvent } from '$app/server';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { bearer } from 'better-auth/plugins';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { env } from 'cloudflare:workers';
 import { getDb, schema } from './db/index.ts';
 import { sendEmail } from './email.ts';
+import { NATIVE_ORIGINS } from './http.ts';
 import { hashPassword, verifyPassword } from './password.ts';
 
 function build(baseURL: string) {
@@ -12,6 +14,7 @@ function build(baseURL: string) {
 		appName: 'Hausfrieden',
 		baseURL,
 		secret: env.BETTER_AUTH_SECRET,
+		trustedOrigins: NATIVE_ORIGINS,
 		database: drizzleAdapter(getDb(), {
 			provider: 'sqlite',
 			schema: {
@@ -43,8 +46,9 @@ function build(baseURL: string) {
 			updateAge: 60 * 60 * 24,
 			cookieCache: { enabled: true, maxAge: 5 * 60 }
 		},
-		// must be last
-		plugins: [sveltekitCookies(getRequestEvent)]
+		// bearer: the native apps send the session token as `Authorization: Bearer …` instead of a cookie
+		// sveltekitCookies must be last
+		plugins: [bearer(), sveltekitCookies(getRequestEvent)]
 	});
 }
 

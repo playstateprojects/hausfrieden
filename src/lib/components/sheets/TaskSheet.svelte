@@ -22,7 +22,6 @@
 	);
 	let sel = $state<string[]>(old?.each ? [...(old.only ?? [])] : old?.team?.length ? [...old.team] : old?.who ? [old.who] : []);
 	let days = $state<number[]>(old && hasDays(old) ? [...old.days] : [6]);
-	let carry = $state(old && hasDays(old) ? old.carry : true);
 	let routine = $state<RoutineKey | ''>(old?.routine ?? '');
 	const dkey = (d: number[]) => 'd:' + [...d].sort().join(',');
 	let freq = $state(
@@ -89,7 +88,7 @@
 			pts: pts || null,
 			every: byDay || once ? 7 : Number(freq.slice(2)) || 7,
 			days: byDay ? [...days].sort() : null,
-			carry: byDay ? carry : false,
+			carry: false,
 			once,
 			each: mode === 'each',
 			who: mode === 'people' && sel.length === 1 ? sel[0] : null,
@@ -146,7 +145,7 @@
 					<button type="button" class="chip" class:on={days.includes(n)} onclick={() => toggleDay(n)}>{WD[n]}</button>
 				{/each}
 			</div>
-			<label class="toggle mt"><input type="checkbox" bind:checked={carry} /><span>If it’s missed, keep it on the list until it’s done</span></label>
+			<p class="sub" style="margin:8px 0 0">Shows only on those days. Missed one? Tap that day in the calendar to tick it off.</p>
 		</div>
 	{/if}
 	<div class="field">

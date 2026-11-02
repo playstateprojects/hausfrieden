@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EVENT_KINDS } from './types.ts';
 
 // Shared by client and server. The server validates every request with these.
 
@@ -59,6 +60,29 @@ export const medInput = z.object({
 	days: weekdays,
 	on: z.boolean()
 });
+const ymd = z.string().regex(/^\d{4}-\d\d-\d\d$/);
+export const eventInput = z.object({
+	id,
+	kind: z.enum(EVENT_KINDS),
+	title: z.string().trim().min(1).max(120),
+	date: ymd,
+	time: z.union([hhmm, z.literal('')]),
+	who: z.union([z.literal('all'), memberIds]),
+	note: z.string().trim().max(200),
+	prep: z.number().int().min(0).max(14),
+	repeat: weekdays.nullable(),
+	until: ymd.nullable().default(null)
+});
+const todoCat = z.enum(['work', 'personal']);
+export const todoInput = z.object({
+	id,
+	memberId: id,
+	text: z.string().trim().min(1).max(300),
+	cat: todoCat,
+	star: z.boolean(),
+	done: z.number().int().min(0),
+	created: z.number().int().min(0)
+});
 export const roomInput = z.object({ id: id.optional(), key: z.string().max(32).nullable().optional(), name, emoji, color });
 
 /** Every mutation against a family goes through one endpoint as one of these ops. */
@@ -85,8 +109,11 @@ export const op = z.discriminatedUnion('op', [
 		at: z.number().int().optional(),
 		alarmKey: z.string().max(200).optional(),
 		medKey: z.string().max(200).optional(),
-		slotAt: z.number().int().optional()
+		slotAt: z.number().int().optional(),
+		fixed: z.boolean().optional()
 	}),
+	/** A grown-up ticking a task off for an earlier day (`at` is on that day). */
+	z.object({ op: z.literal('task.tick'), id, memberId: id, logId: id, at: z.number().int().min(0) }),
 	z.object({ op: z.literal('log.delete'), id }),
 	z.object({ op: z.literal('reward.save'), reward: rewardInput }),
 	z.object({ op: z.literal('reward.delete'), id }),
@@ -114,6 +141,26 @@ export const op = z.discriminatedUnion('op', [
 	}),
 	z.object({ op: z.literal('meds.save'), meds: z.array(medInput).max(40) }),
 	z.object({ op: z.literal('alarm.extend'), id, memberId: id, alarmId: id }),
+	z.object({
+		op: z.literal('event.save'),
+		event: eventInput,
+		/** Window for the generated "Revise: …" task (local-midnight epoch ms), or null for none. */
+		prep: z.object({ from: z.number().int().min(0), until: z.number().int().min(0) }).nullable()
+	}),
+	z.object({ op: z.literal('event.delete'), id }),
+	z.object({
+		op: z.literal('shop.add'),
+		memberId: id,
+		items: z.array(z.object({ id, text: z.string().trim().min(1).max(120), aisle: z.string().max(20), created: z.number().int() })).min(1).max(30)
+	}),
+	z.object({ op: z.literal('shop.set'), id, done: z.number().int().min(0), doneBy: id.nullable() }),
+	z.object({ op: z.literal('shop.delete'), id }),
+	z.object({ op: z.literal('shop.clear') }),
+	z.object({ op: z.literal('handoff.add'), id, fromId: id, toId: id, text: z.string().trim().min(1).max(300), cat: todoCat, created: z.number().int() }),
+	z.object({ op: z.literal('handoff.set'), id, done: z.number().int().min(0) }),
+	z.object({ op: z.literal('handoff.delete'), id }),
+	z.object({ op: z.literal('todo.save'), todo: todoInput }),
+	z.object({ op: z.literal('todo.delete'), id }),
 	z.object({ op: z.literal('family.rename'), name }),
 	z.object({ op: z.literal('invite.rotate') })
 ]);
@@ -136,6 +183,8 @@ export const joinFamily = z.object({
 	name: name.optional(),
 	emoji: emoji.optional()
 });
+
+export type JoinFamily = z.infer<typeof joinFamily>;
 
 export const signUp = z.object({
 	name,

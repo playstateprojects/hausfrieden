@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { authClient } from '#lib/client/auth.ts';
+	import { api } from '#lib/client/api.ts';
+	import { lsSet } from '#lib/client/app.svelte.ts';
+	import { signOut as logout } from '#lib/client/auth.ts';
 	import { burst } from '#lib/client/fx.ts';
 	import { createFamily } from '#lib/schemas.ts';
 	import type { PageProps } from './$types';
@@ -36,7 +38,7 @@
 			return;
 		}
 		busy = true;
-		const res = await fetch('/api/families', {
+		const res = await api('/api/families', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify(parsed.data)
@@ -46,6 +48,8 @@
 			err = ((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Couldn’t create your home';
 			return;
 		}
+		const { familyId } = (await res.json()) as { familyId: string };
+		lsSet('hf_family', familyId);
 		burst();
 		await goto('/', { refreshAll: true });
 	}
@@ -57,7 +61,7 @@
 	}
 
 	async function signOut() {
-		await authClient.signOut();
+		await logout();
 		await goto('/login', { refreshAll: true });
 	}
 </script>

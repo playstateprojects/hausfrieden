@@ -15,6 +15,13 @@
       "when": 1793541344296,
       "tag": "0001_amused_alex_power",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793624257306,
+      "tag": "0002_worried_whiplash",
+      "breakpoints": true
     }
   ]
 }

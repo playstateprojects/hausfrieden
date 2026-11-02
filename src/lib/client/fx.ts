@@ -82,3 +82,23 @@ export function chime() {
 		/* ignore */
 	}
 }
+
+/** Soft rising blip for ticking off a list item. */
+export function pop() {
+	const c = audioCtx;
+	if (!c) return;
+	try {
+		const o = c.createOscillator(),
+			g = c.createGain();
+		o.type = 'triangle';
+		o.frequency.setValueAtTime(520, c.currentTime);
+		o.frequency.exponentialRampToValueAtTime(1040, c.currentTime + 0.09);
+		g.gain.setValueAtTime(0.18, c.currentTime);
+		g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.18);
+		o.connect(g).connect(c.destination);
+		o.start();
+		o.stop(c.currentTime + 0.2);
+	} catch {
+		/* ignore */
+	}
+}

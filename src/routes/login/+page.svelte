@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { IS_NATIVE, getToken } from '#lib/client/api.ts';
 	import { authClient } from '#lib/client/auth.ts';
 	import { signIn, signUp } from '#lib/schemas.ts';
 	import type { PageProps } from './$types';
@@ -23,16 +24,25 @@
 			return;
 		}
 		busy = true;
-		const res =
-			mode === 'up'
-				? await authClient.signUp.email({ name: name.trim(), email: email.trim(), password })
-				: await authClient.signIn.email({ email: email.trim(), password });
-		busy = false;
-		if (res.error) {
-			err = res.error.message ?? 'Something went wrong';
-			return;
+		try {
+			const res =
+				mode === 'up'
+					? await authClient.signUp.email({ name: name.trim(), email: email.trim(), password })
+					: await authClient.signIn.email({ email: email.trim(), password });
+			if (res.error) {
+				err = res.error.message || `Sign-in failed (${res.error.status})`;
+				return;
+			}
+			if (IS_NATIVE && !getToken()) {
+				err = 'Signed in, but the server sent no session token. Please try again.';
+				return;
+			}
+			await goto(data.next, { refreshAll: true });
+		} catch (e) {
+			err = `Can’t reach Hausfrieden (${e instanceof Error ? e.message : String(e)}).`;
+		} finally {
+			busy = false;
 		}
-		await goto(data.next, { refreshAll: true });
 	}
 </script>
 

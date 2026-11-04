@@ -23,6 +23,9 @@ export const NATIVE_ORIGINS = ['capacitor://localhost', 'https://localhost', 'ht
 export function corsHeaders(origin: string): Record<string, string> {
 	return {
 		'access-control-allow-origin': origin,
+		// the better-auth client always fetches with credentials: 'include', which browsers only allow
+		// when the response says so (the origin is echoed back from an allowlist, never '*')
+		'access-control-allow-credentials': 'true',
 		'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
 		'access-control-allow-headers': 'content-type, authorization',
 		// the bearer plugin returns the session token in this header on sign-in

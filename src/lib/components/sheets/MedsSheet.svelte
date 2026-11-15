@@ -2,6 +2,7 @@
 	import { getApp, uid } from '#lib/client/app.svelte.ts';
 	import { WD } from '#lib/constants.ts';
 	import { medInput } from '#lib/schemas.ts';
+	import { canNotify } from '#lib/client/notify.ts';
 	import Sheet from './Sheet.svelte';
 
 	const app = getApp();
@@ -48,7 +49,9 @@
 <Sheet>
 	<h3>💊 Medicine reminders</h3>
 	<p class="sub">
-		An alarm rings at each time on the person’s own device (and grown-ups’ phones for the kids) until it’s ticked off. Only works while Hausfrieden is open.
+		An alarm rings at each time on the person’s own device (and grown-ups’ phones for the kids) until it’s ticked off. {canNotify()
+			? 'With the app closed it arrives as a notification with an alarm sound; open Hausfrieden now and then so each phone picks up changes.'
+			: 'Only works while Hausfrieden is open.'}
 	</p>
 	{#each list as m, i (i)}
 		<div class="card" style="padding:12px;margin-bottom:10px">

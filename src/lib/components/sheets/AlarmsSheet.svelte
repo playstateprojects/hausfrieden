@@ -2,6 +2,7 @@
 	import { getApp, uid } from '#lib/client/app.svelte.ts';
 	import { ALARM_PRESETS, WD } from '#lib/constants.ts';
 	import { alarmInput } from '#lib/schemas.ts';
+	import { canNotify } from '#lib/client/notify.ts';
 	import Sheet from './Sheet.svelte';
 
 	const app = getApp();
@@ -79,7 +80,9 @@
 	<h3>⏰ Alarms</h3>
 	<p class="sub">
 		Each alarm rings full-screen with a chime on the devices of the people it’s for (kids’ alarms also on grown-ups’ phones) until someone taps OK. “Everyone” alarms
-		ring on every device and one tap stops them for all. Only works while Hausfrieden is open.
+		ring on every device and one tap stops them for all. {canNotify()
+			? 'With the app closed they arrive as a notification with an alarm sound; open Hausfrieden now and then so each phone picks up changes.'
+			: 'Only works while Hausfrieden is open.'}
 	</p>
 	{#each list as a, i (i)}
 		<div class="card" style="padding:12px;margin-bottom:10px">

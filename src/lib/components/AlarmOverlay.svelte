@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getApp, hhmm, lsGet, lsSet } from '#lib/client/app.svelte.ts';
 	import { chime } from '#lib/client/fx.ts';
+	import { scheduleNotifications } from '#lib/client/notify.ts';
 	import type { AlarmSlot, MedSlot } from '#lib/logic.ts';
 
 	const app = getApp();
@@ -64,6 +65,12 @@
 		}
 	});
 
+	// snoozes and hides live in localStorage, so the OS queue has to be told about them by hand
+	function changed() {
+		local++;
+		scheduleNotifications(app.house);
+	}
+
 	const slotTitle = (s: AlarmSlot) => {
 		const p = h.person(s.t),
 			lab = s.a.label || 'Alarm';
@@ -73,21 +80,21 @@
 
 	function medSnooze(s: MedSlot) {
 		lsSet('hf_medsnz_' + s.key, String(Date.now() + 6e5));
-		local++;
+		changed();
 		app.showToast('⏰ Reminding again in 10 minutes');
 	}
 	function medHide(s: MedSlot) {
 		lsSet('hf_medhide_' + s.key, '1');
-		local++;
+		changed();
 	}
 	function snooze(s: AlarmSlot) {
 		lsSet('hf_asnz_' + s.key, String(Date.now() + 5 * 6e4));
-		local++;
+		changed();
 		app.showToast('😴 Snoozing 5 minutes');
 	}
 	function hide(s: AlarmSlot) {
 		lsSet('hf_ahide_' + s.key + '_' + s.at, '1');
-		local++;
+		changed();
 	}
 	function ack(s: AlarmSlot) {
 		app.ackAlarm(s.key);

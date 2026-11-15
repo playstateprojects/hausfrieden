@@ -72,9 +72,11 @@
 		const t = setTimeout(() => app.checkRings(), 700);
 		return () => clearTimeout(t);
 	});
-	// hand upcoming alarms and medicine times to the OS so they ring with the app closed (native only)
+	// hand upcoming alarms, medicine times and calendar reminders to the OS so they ring with the app closed (native only)
 	$effect(() => {
 		void app.s;
+		void app.s.log.length;
+		void app.s.events.length;
 		void app.me;
 		const t = setTimeout(() => scheduleNotifications(new House(app.s, app.me ?? '', Date.now())), 500);
 		return () => clearTimeout(t);

@@ -1,3 +1,6 @@
 BETTER_AUTH_SECRET=generate-with-openssl-rand-hex-32
 RESEND_API_KEY=
 RESEND_FROM=Hausfrieden <noreply@your-domain.com>
+# Optional: Google Calendar sync (OAuth client of type "Web application", see README)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

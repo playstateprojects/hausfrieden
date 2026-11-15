@@ -12,13 +12,14 @@
 	async function redeem() {
 		if (!r || !app.me || bal < r.cost) return;
 		const rid = uid(),
-			memberId = app.me;
+			memberId = app.me,
+			rw = r;
 		app.sheet = null;
-		app.s.redemptions.unshift({ id: rid, memberId, name: r.name, emoji: r.emoji, cost: r.cost, at: Date.now(), ext: false, alarmId: null });
-		app.s.balances[memberId] = (app.s.balances[memberId] || 0) - r.cost;
+		app.s.redemptions.unshift({ id: rid, memberId, name: rw.name, emoji: rw.emoji, cost: rw.cost, at: Date.now(), ext: false, alarmId: null });
+		app.s.balances[memberId] = (app.s.balances[memberId] || 0) - rw.cost;
 		burst(160);
-		app.showToast(`Enjoy your ${r.name.toLowerCase()}! 🎉`);
-		await app.send({ op: 'reward.redeem', id: rid, rewardId: r.id, memberId });
+		app.showToast(`Enjoy your ${rw.name.toLowerCase()}! 🎉`);
+		await app.send({ op: 'reward.redeem', id: rid, rewardId: rw.id, memberId });
 	}
 </script>
 

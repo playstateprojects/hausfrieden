@@ -106,10 +106,12 @@
 	}
 
 	async function del() {
-		if (!id) return;
+		// Read the prop before closing: once the sheet unmounts, `id` is no longer readable.
+		const tid = id;
+		if (!tid) return;
 		app.sheet = null;
-		app.s.tasks = app.s.tasks.filter((t) => t.id !== id);
-		if (await app.send({ op: 'task.delete', id })) app.showToast('Deleted');
+		app.s.tasks = app.s.tasks.filter((t) => t.id !== tid);
+		if (await app.send({ op: 'task.delete', id: tid })) app.showToast('Deleted');
 	}
 </script>
 

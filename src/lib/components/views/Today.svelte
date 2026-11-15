@@ -20,7 +20,8 @@
 	const h = $derived(app.house);
 	const me = $derived(h.person(app.me)!);
 	const list = $derived(h.scoped(app.scope));
-	const due = $derived(list.filter((t) => h.ratio(t) >= 1).sort((a, b) => h.ratio(b) - h.ratio(a)));
+	// only what is set for today — jobs that fell due on an earlier day stay on that day in the calendar
+	const due = $derived(list.filter((t) => h.ratio(t) >= 1 && !h.leftover(t)).sort((a, b) => h.ratio(b) - h.ratio(a)));
 	const soon = $derived(
 		list
 			.filter((t) => {
@@ -40,7 +41,7 @@
 	const proj = $derived(due.filter((t) => t.once));
 	const hw = $derived(due.filter((t) => !t.once && isHw(t)));
 	const big = $derived(due.filter((t) => !t.once && !isHw(t) && isBig(t)));
-	// your own jobs first, then the daily ones, then whatever is most overdue
+	// your own jobs first, then the daily ones
 	const own = (t: Task) => t.each || t.who === app.me || (Array.isArray(t.team) && t.team.includes(app.me!));
 	const rest = $derived(
 		due

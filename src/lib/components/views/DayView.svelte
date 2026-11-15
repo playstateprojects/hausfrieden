@@ -25,16 +25,19 @@
 		if (!past) l = l.filter((t) => t.routine || h.isHw(t) || hasDays(t) || t.activeFrom || +t.every === 1);
 		return l;
 	});
+	// an "every N days" job that fell due on this past day and hasn't been done since
+	const openHere = (t: Task) => past && h.dueDay(t, who) === day;
 	const groups = $derived(
 		[
 			...(Object.keys(ROUTINES) as (keyof typeof ROUTINES)[]).map((k): [string, Task[]] => [
 				ROUTINES[k].emoji + ' ' + ROUTINES[k].label,
 				list.filter((t) => t.routine === k).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 			]),
-			['📚 Homework', list.filter((t) => !t.routine && h.isHw(t))] as [string, Task[]],
+			['📚 Homework', list.filter((t) => !t.routine && h.isHw(t) && !openHere(t))] as [string, Task[]],
+			['⏳ Still open from this day', list.filter((t) => !t.routine && openHere(t))] as [string, Task[]],
 			[
 				'🧹 ' + (past ? 'Jobs' : 'Planned jobs'),
-				list.filter((t) => !t.routine && !h.isHw(t)).sort((a, b) => +(b.every === 1) - +(a.every === 1) || a.name.localeCompare(b.name))
+				list.filter((t) => !t.routine && !h.isHw(t) && !openHere(t)).sort((a, b) => +(b.every === 1) - +(a.every === 1) || a.name.localeCompare(b.name))
 			] as [string, Task[]]
 		].filter((g) => g[1].length)
 	);

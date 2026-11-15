@@ -201,6 +201,15 @@ export interface FamilyState {
 	myMemberId: string;
 }
 
+/** GET /api/f/[fid]/google */
+export interface CalendarStatus {
+	/** False when the server has no Google credentials, or the member isn't a grown-up. */
+	available: boolean;
+	link: { email: string; calendarId: string; calendarName: string; onlyMine: boolean; lastError: string | null } | null;
+	/** Calendars the connected account can write to. */
+	calendars: { id: string; name: string }[];
+}
+
 export interface SessionUser {
 	id: string;
 	name: string;

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { AppState, setApp, type View } from '#lib/client/app.svelte.ts';
 	import { unlockAudio } from '#lib/client/fx.ts';
 	import { scheduleNotifications } from '#lib/client/notify.ts';
@@ -82,6 +83,14 @@
 		return () => clearTimeout(t);
 	});
 	onDestroy(() => app.destroy());
+	// back from Google's consent screen (web): reopen the profile sheet, which runs the first sync
+	onMount(() => {
+		const gcal = new URLSearchParams(location.search).get('gcal');
+		if (!gcal) return;
+		goto('/', { replaceState: true });
+		if (gcal !== 'ok') app.showToast(gcal);
+		app.sheet = { kind: 'profile', id: app.s.myMemberId };
+	});
 
 	const me = $derived(app.house.person(app.me));
 	const TABS: [View, string, string][] = [

@@ -56,6 +56,25 @@ If you change `wrangler.toml` bindings, run `npm run cf-typegen`.
 4. Settings → Variables and Secrets → add `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `RESEND_FROM`.
 5. Push to `main` → production deploy. Any other branch / PR → preview URL.
 
+## Google Calendar sync (optional)
+
+Grown-ups with their own login can connect a Google Calendar from their profile sheet (tap your
+name at the top). Family events are then pushed one way into that calendar
+(`src/lib/server/google.ts`, table `calendar_links`). Without the two variables below the option
+simply doesn't show.
+
+1. [Google Cloud console](https://console.cloud.google.com/) → new project → enable the **Google Calendar API**.
+2. OAuth consent screen: add the scopes `.../auth/calendar.events` and
+   `.../auth/calendar.calendarlist.readonly`. While the app is in "Testing", add each adult as a
+   test user (and note that Google expires test-mode refresh tokens after 7 days — publish the app
+   to avoid reconnecting weekly).
+3. Credentials → Create OAuth client ID → **Web application**. Authorised redirect URIs:
+   `https://<your-domain>/api/google/callback` and `http://localhost:5173/api/google/callback`.
+   The native apps use the same client (the consent screen opens in the system browser).
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` as Worker secrets and in `.dev.vars`.
+
+Preview URLs can't complete the flow unless their callback URL is registered too.
+
 ## Working on it with Claude
 
 See `CLAUDE.md`. Suggested flow: ask Claude to make a change on a branch and open a PR,

@@ -344,3 +344,33 @@ export const todos = sqliteTable(
 	},
 	(t) => [index('todos_family_member_idx').on(t.familyId, t.memberId)]
 );
+
+/**
+ * A grown-up's Google Calendar connection. Family events are pushed (one way) to `calendarId`;
+ * see server/google.ts. One row per member, so the same login can connect a calendar per family.
+ */
+export const calendarLinks = sqliteTable(
+	'calendar_links',
+	{
+		memberId: text('member_id')
+			.primaryKey()
+			.references(() => members.id, { onDelete: 'cascade' }),
+		familyId: text('family_id')
+			.notNull()
+			.references(() => families.id, { onDelete: 'cascade' }),
+		/** The connected Google account (shown in the profile sheet). */
+		email: text('email').notNull(),
+		/** AES-GCM encrypted; never sent to the client. */
+		refreshToken: text('refresh_token').notNull(),
+		calendarId: text('calendar_id').notNull(),
+		calendarName: text('calendar_name').notNull(),
+		/** IANA zone of the calendar; event times are wall-clock times in it. */
+		timeZone: text('time_zone').notNull(),
+		/** Only push events that include this member (or everyone). */
+		onlyMine: integer('only_mine', { mode: 'boolean' }).notNull().default(false),
+		/** Why the last push failed, if it did. */
+		lastError: text('last_error'),
+		createdAt: integer('created_at').notNull()
+	},
+	(t) => [index('calendar_links_family_idx').on(t.familyId)]
+);

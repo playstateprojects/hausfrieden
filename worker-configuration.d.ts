@@ -6,6 +6,8 @@ interface __BaseEnv_Env {
 	BETTER_AUTH_SECRET: string;
 	RESEND_API_KEY: string;
 	RESEND_FROM: string;
+	GOOGLE_CLIENT_ID: string;
+	GOOGLE_CLIENT_SECRET: string;
 }
 declare namespace Cloudflare {
 	interface Env extends __BaseEnv_Env {}
@@ -15,7 +17,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "BETTER_AUTH_SECRET" | "RESEND_API_KEY" | "RESEND_FROM">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "BETTER_AUTH_SECRET" | "RESEND_API_KEY" | "RESEND_FROM" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET">> {}
 }
 declare module "*.txt" {
 	const value: string;

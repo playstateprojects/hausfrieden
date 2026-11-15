@@ -67,9 +67,10 @@
 		if (await app.saveEvent(parsed.data)) app.showToast(old ? 'Event saved' : `📅 Added${withPrep ? ' — revision reminders set' : ''}`);
 	}
 	async function del() {
-		if (!id) return;
+		const eid = id;
+		if (!eid) return;
 		app.sheet = null;
-		if (await app.deleteEvent(id)) app.showToast('Event deleted');
+		if (await app.deleteEvent(eid)) app.showToast('Event deleted');
 	}
 </script>
 

@@ -28,10 +28,11 @@
 		await app.send({ op: 'reward.save', reward: parsed.data });
 	}
 	async function del() {
-		if (!id) return;
+		const rid = id;
+		if (!rid) return;
 		app.sheet = null;
-		app.s.rewards = app.s.rewards.filter((x) => x.id !== id);
-		await app.send({ op: 'reward.delete', id });
+		app.s.rewards = app.s.rewards.filter((x) => x.id !== rid);
+		await app.send({ op: 'reward.delete', id: rid });
 	}
 </script>
 

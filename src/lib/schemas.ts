@@ -166,6 +166,17 @@ export const op = z.discriminatedUnion('op', [
 ]);
 export type Op = z.infer<typeof op>;
 
+/** POST /api/f/[fid]/google — the signed-in grown-up's own Google Calendar connection. */
+export const calendarAction = z.discriminatedUnion('action', [
+	/** Returns the Google consent URL to open. */
+	z.object({ action: z.literal('start'), native: z.boolean().default(false) }),
+	z.object({ action: z.literal('config'), calendarId: z.string().min(1).max(300), onlyMine: z.boolean() }),
+	/** Pushes one chunk of events; call again with the returned `next` until it is null. `from` = the calendar they were in before. */
+	z.object({ action: z.literal('sync'), offset: z.number().int().min(0).default(0), from: z.string().min(1).max(300).optional() }),
+	z.object({ action: z.literal('disconnect') })
+]);
+export type CalendarAction = z.infer<typeof calendarAction>;
+
 export const createFamily = z.object({
 	name,
 	members: z.array(z.object({ name, emoji, kind: z.enum(['adult', 'kid']).default('kid') })).min(1).max(30),

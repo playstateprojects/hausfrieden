@@ -117,6 +117,19 @@ export class House {
 		return ds / every + ((now - l) / DAY - ds) * 0.001;
 	};
 
+	/** The day an "every N days" job fell due (local midnight); null for daily, weekday, one-off and never-done jobs. */
+	dueDay = (t: Task, pid?: string): number | null => {
+		const l = this.lastFor(t, pid),
+			every = t.every || 7;
+		if (t.once || hasDays(t) || !l || every <= 1) return null;
+		return addDays(l, every);
+	};
+	/** Fell due on an earlier day and is still open — it belongs to that day, not to today's list. */
+	leftover = (t: Task, pid?: string) => {
+		const d = this.dueDay(t, pid);
+		return d !== null && d < this.startOfDay;
+	};
+
 	status = (t: Task): Status => {
 		const r = this.ratio(t),
 			l = this.lastFor(t);
@@ -133,7 +146,7 @@ export class House {
 		if (r >= 1) {
 			if (!l) return ['due', 'to do'];
 			const over = daysBetween(l, this.now) - t.every;
-			return ['due', over >= 1 ? over + 'd overdue' : 'today'];
+			return ['due', over >= 1 && t.every > 1 ? over + 'd overdue' : 'today'];
 		}
 		const left = t.every - daysBetween(l, this.now);
 		return [r >= 0.75 ? 'soon' : 'ok', left <= 1 ? 'tomorrow' : 'in ' + left + 'd'];
@@ -172,7 +185,7 @@ export class House {
 
 	buildSprint = (min: number, scope: Scope) => {
 		const pool = this.scoped(scope)
-			.filter((t) => !this.doneRecently(t))
+			.filter((t) => !this.doneRecently(t) && !this.leftover(t))
 			.sort((a, b) => this.ratio(b) - this.ratio(a))
 			.filter((t) => this.ratio(t) >= 0.6);
 		const out: Task[] = [];

@@ -15,12 +15,14 @@
 	async function save() {
 		const v = text.trim();
 		if (!t || !v) return;
+		const tid = id;
 		app.sheet = null;
-		await app.patchTodo(id, { text: v, cat, star });
+		await app.patchTodo(tid, { text: v, cat, star });
 	}
 	async function del() {
+		const tid = id;
 		app.sheet = null;
-		await app.deleteTodo(id);
+		await app.deleteTodo(tid);
 		app.showToast('Deleted');
 	}
 </script>
